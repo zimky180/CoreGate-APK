@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_gradient">
+
+    <!-- 内容容器：铺满，底部留出导航栏高度，避免最后一行被玻璃盖住 -->
+    <FrameLayout
+        android:id="@+id/content_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:paddingBottom="96dp" />
+
+    <!-- 悬浮液态玻璃导航栏：叠在内容之上，底部悬浮 -->
+    <com.zimky.coregate.widget.GlassBottomBar
+        android:id="@+id/glass_bar"
+        android:layout_width="match_parent"
+        android:layout_height="68dp"
+        android:layout_gravity="bottom"
+        android:layout_marginLeft="14dp"
+        android:layout_marginRight="14dp"
+        android:layout_marginBottom="18dp" />
+
+</FrameLayout>

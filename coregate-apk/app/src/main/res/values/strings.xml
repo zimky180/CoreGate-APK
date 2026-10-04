@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CoreGate</string>
+    <string name="tab_lock">锁核状态</string>
+    <string name="tab_strategy">恢复策略</string>
+    <string name="tab_freq">日常限频</string>
+    <string name="tab_custom">自定义</string>
+</resources>

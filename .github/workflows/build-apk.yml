@@ -1,0 +1,54 @@
+name: Build CoreGate APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'coregate-apk/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: coregate-apk
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle 8.2
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2'
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Build Release APK (unsigned)
+        run: gradle assembleRelease --no-daemon --stacktrace
+        continue-on-error: true
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find app/build/outputs/apk -name '*.apk' -exec cp {} out/ \;
+          ls -la out/
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoreGate-APK
+          path: coregate-apk/out/*.apk
+          if-no-files-found: error
