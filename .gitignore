@@ -4,6 +4,9 @@
 /.idea
 .DS_Store
 /build
+/app/build
+/out
 /captures
 .externalNativeBuild
 .cxx
+*.apk
