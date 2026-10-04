@@ -72,7 +72,7 @@ public class MainActivity extends AppCompatActivity {
         if (index == current) return;
 
         FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
-        ft.setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out, 180);
+        ft.setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out);
 
         // 先隐藏已显示的
         if (current >= 0) {
