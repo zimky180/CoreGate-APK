@@ -125,6 +125,12 @@
   .info{font-size:12px;color:var(--sub);background:rgba(79,140,255,.08);border:1px solid rgba(79,140,255,.22);border-radius:12px;padding:10px;margin-top:10px}
   #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:100px;z-index:99;background:rgba(28,34,48,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.15);color:var(--txt);padding:11px 20px;border-radius:14px;font-size:13px;display:none;max-width:86%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)}
   .savebar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(10,14,24,.92) 35%);z-index:9}
+  /* 保存栏上移，避开底部悬浮导航栏（62px 高 + 16px 底距 + 安全区），杜绝重叠 */
+  .savebar{
+    bottom:calc(78px + env(safe-area-inset-bottom));
+    padding-bottom:12px;
+    background:none;
+  }
   .savebar .inner{max-width:600px;margin:0 auto}
   .savebar button{width:100%;padding:13px;font-size:15px}
 
@@ -146,6 +152,8 @@
     box-shadow:0 12px 40px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.20);
     z-index:20;
     -webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;touch-action:none;
+    -webkit-user-drag:none;
   }
   #tabbar .tab{
     position:relative;flex:1;height:100%;
@@ -169,11 +177,15 @@
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
     #tabbar{background:rgba(22,28,42,.88)}
   }
+  /* 长按进入拖拽态：放大胶囊 + 跟手过渡，对齐 KSU 悬浮导航手感 */
+  #tabbar.dragging{cursor:grabbing}
+  #tabbar.dragging .tab{transition:none}
+  #tabbar.dragging .pill-ind{transition:none;box-shadow:0 6px 22px rgba(79,140,255,.5),inset 0 1px 0 rgba(255,255,255,.3)}
   /* 每个 tab 页面：非激活隐藏 */
   .page{display:none}
   .page.on{display:block;animation:pageIn .26s ease}
   @keyframes pageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  body{padding-bottom:150px}
+  body{padding-bottom:210px}
 
 </style>
 </head>
@@ -246,6 +258,16 @@
   <div class="tips">⚠️ 8 Gen 5 建议只锁 1 颗超大核起步（cpu7），确认稳定流畅再考虑 2 颗。cpu0 永不下线。</div>
 </div>
 
+<!-- 关于 WebUI -->
+<div class="card">
+  <h2>关于本 WebUI</h2>
+  <div class="info" style="margin-top:0">
+    📱 本界面为 CoreGate 的 APK 内置图形化控制台（WebUI），通过底部悬浮导航栏在四个页面间切换：<b>🔒锁核</b>（运行状态 / 核心可视化 / 锁核建议）、<b>🎮策略</b>（游戏包名 / 录屏相机 / 充电与检测间隔）、<b>⚙️限频</b>（日常限频与生效实况）、<b>⚙️设置</b>（诊断 / 测试 / 清理）。<br>
+    所有配置写入 <span class="mono" style="display:inline;background:none;border:none;padding:0">/data/adb/CoreGate/config.json</span>，点底部「保存配置」后约 5 秒内自动生效，无需重启。
+  </div>
+  <div class="hint" style="margin-top:8px">全部修改仅作用于 sysfs 运行时，重启即还原，不写入任何系统分区，零残留、完全可逆。作者 zimky。</div>
+</div>
+
 </div><!-- /page-lock -->
 
 <!-- ============ 第 2 页：策略（游戏 / 录屏相机 / 充电间隔） ============ -->
@@ -299,8 +321,8 @@
 <!-- ============ 第 3 页：限频 ============ -->
 <div class="page" id="page-freq">
 
-<!-- 限频（默认折叠，属进阶省电） -->
-<details class="card" id="freqCard">
+<!-- 限频（默认展开，属进阶省电） -->
+<details class="card" id="freqCard" open>
   <summary><h2 style="display:inline-block;margin:0;font-size:15px">⚙️ 日常限频（进阶省电）</h2></summary>
   <div class="row" style="margin-top:12px">
     <div>
@@ -331,7 +353,7 @@
 
 </div><!-- /page-freq -->
 
-<!-- ============ 第 4 页：自定义（诊断 / 测试 / 清理） ============ -->
+<!-- ============ 第 4 页：设置（诊断 / 测试 / 清理） ============ -->
 <div class="page" id="page-misc">
 
 <!-- 诊断 -->
@@ -363,7 +385,7 @@
   <div class="tab on" data-i="0" onclick="switchPage(0)"><span class="ic">🔒</span>锁核</div>
   <div class="tab" data-i="1" onclick="switchPage(1)"><span class="ic">🎮</span>策略</div>
   <div class="tab" data-i="2" onclick="switchPage(2)"><span class="ic">⚙️</span>限频</div>
-  <div class="tab" data-i="3" onclick="switchPage(3)"><span class="ic">🧰</span>自定义</div>
+  <div class="tab" data-i="3" onclick="switchPage(3)"><span class="ic">⚙️</span>设置</div>
 </nav>
 
 <!-- 保存栏 -->
@@ -441,6 +463,112 @@ function switchPage(i){
     try{ refreshFreqCap(true); }catch(e){}
   }
 }
+
+// ---------- 导航栏长按 + 左右滑动手势（对齐 KernelSU 悬浮导航） ----------
+// 交互约定：
+//   · 轻点 Tab        → 立即切换该页
+//   · 长按(≈220ms)不放 → 进入拖拽态，左右滑动跟手切换页面，松手落定
+//   · 长按后未移动松开 → 视为一次普通点击
+(function(){
+  var bar = document.getElementById('tabbar');
+  if(!bar) return;
+  var LONG_MS = 220;          // 长按判定阈值
+  var MOVE_TOL = 10;          // 判定「还在长按」的位移容差(px)
+  var active = false;         // 是否已进入拖拽态
+  var startX = 0, startY = 0, curIdx = 0, lastIdx = -1;
+  var timer = null, suppressClick = false;
+
+  function barRect(){ return bar.getBoundingClientRect(); }
+  function idxByX(x){
+    var r = barRect();
+    var n = _PAGE_IDS.length;
+    var rel = (x - r.left) / r.width;              // 0~1
+    var i = Math.floor(rel * n);
+    if(i < 0) i = 0; if(i > n - 1) i = n - 1;
+    return i;
+  }
+  function enterDrag(){
+    active = true;
+    bar.classList.add('dragging');
+    if(navigator.vibrate){ try{ navigator.vibrate(12); }catch(e){} }
+    // 拖拽中胶囊无过渡，跟手移动
+    var ind = document.getElementById('pillInd');
+    if(ind) ind.style.transition = 'none';
+  }
+  function moveTo(x){
+    var i = idxByX(x);
+    if(i === lastIdx) return;
+    lastIdx = i;
+    // 只移动胶囊 + 高亮，不切页（松手才落定，避免滑动中频繁触发刷新）
+    var ind = document.getElementById('pillInd');
+    if(ind) ind.style.transform = 'translateX(' + (i * 100) + '%)';
+    var tabs = bar.querySelectorAll('.tab');
+    for(var t = 0; t < tabs.length; t++){
+      tabs[t].classList[ (parseInt(tabs[t].getAttribute('data-i'),10) === i) ? 'add' : 'remove' ]('on');
+    }
+  }
+  function endDrag(commit){
+    if(timer){ clearTimeout(timer); timer = null; }
+    var ind = document.getElementById('pillInd');
+    if(ind) ind.style.transition = '';
+    if(!active) return;
+    bar.classList.remove('dragging');
+    active = false;
+    suppressClick = true;                       // 吞掉随后由手指松开产生的 click
+    setTimeout(function(){ suppressClick = false; }, 350);
+    if(commit && lastIdx >= 0 && lastIdx !== curIdx){
+      switchPage(lastIdx);           // 落定到目标页
+    } else {
+      switchPage(curIdx);            // 回到原位（未移动 / 取消）
+    }
+    curIdx = _curPage;
+    lastIdx = -1;
+  }
+
+  // 拖拽结束后，浏览器仍会补发一次 click，这里在捕获阶段拦截，避免二次切换
+  bar.addEventListener('click', function(e){
+    if(suppressClick){ e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
+  bar.addEventListener('touchstart', function(e){
+    if(e.touches.length !== 1) return;
+    var t = e.touches[0];
+    startX = t.clientX; startY = t.clientY;
+    curIdx = _curPage; lastIdx = -1;
+    timer = setTimeout(function(){ enterDrag(); lastIdx = curIdx; }, LONG_MS);
+  }, {passive:true});
+
+  bar.addEventListener('touchmove', function(e){
+    if(e.touches.length !== 1) return;
+    var t = e.touches[0];
+    var dx = Math.abs(t.clientX - startX), dy = Math.abs(t.clientY - startY);
+    if(!active){
+      // 长按未达成就滑动 → 取消长按，不拦截（让页面正常滚动）
+      if(dx > MOVE_TOL || dy > MOVE_TOL){ if(timer){ clearTimeout(timer); timer = null; } }
+      return;
+    }
+    // 已进入拖拽态：跟手移动且阻止页面滚动
+    if(e.cancelable) e.preventDefault();
+    moveTo(t.clientX);
+  }, {passive:false});
+
+  bar.addEventListener('touchend', function(){
+    if(active){ endDrag(true); }
+    else if(timer){ clearTimeout(timer); timer = null; }  // 短按交给 click 处理
+  });
+  bar.addEventListener('touchcancel', function(){ endDrag(false); });
+
+  // 鼠标（桌面调试）也支持长按拖拽
+  bar.addEventListener('mousedown', function(e){
+    if(e.button !== 0) return;
+    startX = e.clientX; curIdx = _curPage; lastIdx = -1;
+    timer = setTimeout(function(){ enterDrag(); lastIdx = curIdx; }, LONG_MS);
+    function mm(ev){ if(active){ ev.preventDefault(); moveTo(ev.clientX); } }
+    function mu(){ document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); endDrag(true); }
+    document.addEventListener('mousemove', mm);
+    document.addEventListener('mouseup', mu);
+  });
+})();
 
 function toast(msg, type){
   var t = $('toast');
