@@ -42,6 +42,8 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="自动恢复触发源" />
 
             <LinearLayout
@@ -69,6 +71,8 @@
                         style="@style/BodyText"
                         android:layout_marginTop="2dp"
                         android:textSize="12sp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:text="开启后，检测到录屏或相机启动时恢复全部核心，避免卡顿。" />
                 </LinearLayout>
 
@@ -103,6 +107,8 @@
                         style="@style/BodyText"
                         android:layout_marginTop="2dp"
                         android:textSize="12sp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:text="检测到下方列表内的游戏在前台时，恢复全部核心。" />
                 </LinearLayout>
 
@@ -134,6 +140,8 @@
                 android:id="@+id/btn_save_packages"
                 style="@style/BtnGhost"
                 android:layout_marginTop="10dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="保存游戏列表" />
         </LinearLayout>
 
@@ -148,6 +156,8 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="锁核策略" />
 
             <LinearLayout
@@ -197,6 +207,8 @@
                 style="@style/BodyText"
                 android:layout_marginTop="10dp"
                 android:textSize="12sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="开关改动会立即写入模块配置，无需重启。" />
         </LinearLayout>
 

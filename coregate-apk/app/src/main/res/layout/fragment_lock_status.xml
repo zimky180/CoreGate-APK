@@ -42,6 +42,8 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="运行状态" />
 
             <LinearLayout
@@ -72,24 +74,32 @@
                 android:id="@+id/txt_state"
                 style="@style/ValueText"
                 android:layout_marginTop="6dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="当前状态：—" />
 
             <TextView
                 android:id="@+id/txt_focus"
                 style="@style/ValueText"
                 android:layout_marginTop="4dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="前台包名：—" />
 
             <TextView
                 android:id="@+id/txt_snapshot"
                 style="@style/ValueText"
                 android:layout_marginTop="4dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="频率快照：—" />
 
             <Button
                 android:id="@+id/btn_refresh"
                 style="@style/BtnGhost"
                 android:layout_marginTop="12dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="刷新状态" />
         </LinearLayout>
 
@@ -104,12 +114,16 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="核心状态" />
 
             <TextView
                 android:id="@+id/txt_cluster"
                 style="@style/ValueText"
                 android:layout_marginTop="10dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="小核簇：— / 大核簇：—" />
 
             <!-- 8 个核心状态，用代码动态填充 -->
@@ -132,12 +146,16 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="锁核建议" />
 
             <TextView
                 android:id="@+id/txt_advice"
                 style="@style/BodyText"
                 android:layout_marginTop="10dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="正在分析…" />
         </LinearLayout>
 
@@ -152,11 +170,15 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="封锁核心" />
 
             <TextView
                 style="@style/BodyText"
                 android:layout_marginTop="8dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="选择日常封锁的核心数量（保留其余核心在线）。" />
 
             <LinearLayout
@@ -191,6 +213,8 @@
                 android:id="@+id/btn_lock_now"
                 style="@style/BtnPrimary"
                 android:layout_marginTop="12dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="立即锁定" />
 
             <TextView
@@ -198,6 +222,8 @@
                 style="@style/BodyText"
                 android:layout_marginTop="8dp"
                 android:textSize="12sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="默认只锁 1 个最高频核；cpu0 永不下线；重启即还原。" />
         </LinearLayout>
 

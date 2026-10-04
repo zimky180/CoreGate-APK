@@ -64,6 +64,8 @@
                         style="@style/BodyText"
                         android:layout_marginTop="2dp"
                         android:textSize="12sp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:text="关闭后会精确恢复到开启前的原始频率。" />
                 </LinearLayout>
 
@@ -79,17 +81,23 @@
                 android:layout_marginTop="12dp"
                 android:textSize="13sp"
                 android:textColor="@color/text_main"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="实况读取中…" />
 
             <Button
                 android:id="@+id/btn_refresh_freq"
                 style="@style/BtnGhost"
                 android:layout_marginTop="10dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="刷新限频实况" />
 
             <TextView
                 style="@style/HintText"
                 android:layout_marginTop="8dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="💡 每次刷新都需申请一次 root 操作，短时间大量点击可能被安全机制误判为入侵并弹窗警告；正常点击无此问题，稍等片刻警告即消失，可放心使用。" />
         </LinearLayout>
 
@@ -104,12 +112,16 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="频率上限档位" />
 
             <TextView
                 style="@style/BodyText"
                 android:layout_marginTop="4dp"
                 android:textSize="12sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="档位取自本机内核真实支持的频率表，选不到硬件不存在的档。" />
 
             <!-- 小核 -->
@@ -161,6 +173,8 @@
                 android:id="@+id/btn_apply_freq"
                 style="@style/BtnPrimary"
                 android:layout_marginTop="16dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="应用限频档位" />
 
             <TextView
@@ -168,6 +182,8 @@
                 style="@style/BodyText"
                 android:layout_marginTop="8dp"
                 android:textSize="12sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="默认 小核 2266 / 大核 1651 / GPU 500，够用且省电。" />
         </LinearLayout>
 

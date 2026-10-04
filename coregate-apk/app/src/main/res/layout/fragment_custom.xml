@@ -42,6 +42,8 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="锁核参数" />
 
             <TextView
@@ -89,12 +91,16 @@
             <TextView
                 style="@style/HintText"
                 android:layout_marginTop="6dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="默认 30 秒一循环；数值越小越灵敏但越耗电，5 秒以下无意义。" />
 
             <Button
                 android:id="@+id/btn_save_params"
                 style="@style/BtnPrimary"
                 android:layout_marginTop="14dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="保存参数" />
         </LinearLayout>
 
@@ -109,12 +115,16 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="手动自定义输入" />
 
             <TextView
                 style="@style/BodyText"
                 android:layout_marginTop="4dp"
                 android:textSize="12sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="不确定就留空，留空使用日常限频页选的档位。填入的数值会直接写入 config.json。" />
 
             <TextView
@@ -187,6 +197,8 @@
                 android:id="@+id/btn_apply_custom"
                 style="@style/BtnPrimary"
                 android:layout_marginTop="14dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="应用并保存" />
 
             <TextView
@@ -194,6 +206,8 @@
                 style="@style/BodyText"
                 android:layout_marginTop="8dp"
                 android:textSize="12sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="写入硬件不存在的档位时，内核会自动对齐到最近可用档，属正常现象。" />
         </LinearLayout>
 
@@ -208,30 +222,40 @@
 
             <TextView
                 style="@style/SectionTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="诊断 / 测试 / 清理" />
 
             <Button
                 android:id="@+id/btn_diagnose"
                 style="@style/BtnGhost"
                 android:layout_marginTop="12dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="环境诊断" />
 
             <Button
                 android:id="@+id/btn_test"
                 style="@style/BtnGhost"
                 android:layout_marginTop="8dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="读取模块状态" />
 
             <Button
                 android:id="@+id/btn_clean"
                 style="@style/BtnGhost"
                 android:layout_marginTop="8dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="清理临时文件" />
 
             <Button
                 android:id="@+id/btn_restore"
                 style="@style/BtnGhost"
                 android:layout_marginTop="8dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="一键恢复原始状态" />
 
             <TextView
@@ -240,6 +264,8 @@
                 android:layout_marginTop="12dp"
                 android:textSize="11sp"
                 android:typeface="monospace"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="（输出将显示在这里）" />
         </LinearLayout>
 
