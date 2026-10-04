@@ -15,6 +15,9 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,13 +28,25 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Show Android SDK
+        run: |
+          echo "SDK root: $ANDROID_SDK_ROOT"
+          ls -1 "$ANDROID_SDK_ROOT" || true
+          ls -1 "$ANDROID_SDK_ROOT/platforms" || true
+          ls -1 "$ANDROID_SDK_ROOT/build-tools" || true
 
       - name: Setup Gradle 8.2
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.2'
+
+      - name: Accept licenses and install needed SDK
+        continue-on-error: true
+        run: |
+          SM="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SM" ] || SM="$(command -v sdkmanager)"
+          yes | "$SM" --licenses >/dev/null 2>&1 || true
+          "$SM" "platforms;android-34" "build-tools;34.0.0" >/dev/null 2>&1 || true
 
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
