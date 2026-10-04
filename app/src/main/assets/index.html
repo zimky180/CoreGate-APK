@@ -124,15 +124,7 @@
   .tips{font-size:12px;color:#ffd9a8;background:rgba(255,159,10,.1);border:1px solid rgba(255,159,10,.28);border-radius:12px;padding:10px;margin-top:10px}
   .info{font-size:12px;color:var(--sub);background:rgba(79,140,255,.08);border:1px solid rgba(79,140,255,.22);border-radius:12px;padding:10px;margin-top:10px}
   #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:100px;z-index:99;background:rgba(28,34,48,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.15);color:var(--txt);padding:11px 20px;border-radius:14px;font-size:13px;display:none;max-width:86%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5)}
-  .savebar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(10,14,24,.92) 35%);z-index:9}
-  /* 保存栏上移，避开底部悬浮导航栏（62px 高 + 16px 底距 + 安全区），杜绝重叠 */
-  .savebar{
-    bottom:calc(78px + env(safe-area-inset-bottom));
-    padding-bottom:12px;
-    background:none;
-  }
-  .savebar .inner{max-width:600px;margin:0 auto}
-  .savebar button{width:100%;padding:13px;font-size:15px}
+  /* （原底部悬浮保存栏已迁入「设置」页，其余页面改为自动保存） */
 
   /* ============================================================
      底部悬浮液态玻璃导航栏（对齐 KernelSU / LSPosed 视觉）
@@ -166,21 +158,32 @@
   #tabbar .tab.on .ic{opacity:1;transform:translateY(-1px)}
   /* 选中态：柔和玻璃高亮胶囊（KSU 风格，不用硬色块） */
   #tabbar .pill-ind{
-    position:absolute;top:7px;bottom:7px;left:6px;width:calc((100% - 12px)/4);
+    position:absolute;top:7px;bottom:7px;left:6px;
+    width:calc((100% - 12px)/4);
     border-radius:25px;
     background:linear-gradient(150deg,rgba(79,140,255,.34),rgba(124,77,255,.22));
     border:1px solid rgba(121,168,255,.42);
     box-shadow:0 4px 18px rgba(79,140,255,.32),inset 0 1px 0 rgba(255,255,255,.22);
-    transition:transform .28s cubic-bezier(.22,1,.36,1);
+    /* 松手落定：Q弹吸附（对齐 KSU 悬浮导航手感） */
+    transition:transform .34s cubic-bezier(.16,1.22,.36,1);
+    will-change:transform;
     z-index:1;
   }
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
     #tabbar{background:rgba(22,28,42,.88)}
   }
-  /* 长按进入拖拽态：放大胶囊 + 跟手过渡，对齐 KSU 悬浮导航手感 */
+  /* 长按进入拖拽态：胶囊放大 + 发光 + 无过渡（1:1 跟手） */
   #tabbar.dragging{cursor:grabbing}
   #tabbar.dragging .tab{transition:none}
-  #tabbar.dragging .pill-ind{transition:none;box-shadow:0 6px 22px rgba(79,140,255,.5),inset 0 1px 0 rgba(255,255,255,.3)}
+  #tabbar.dragging .pill-ind{
+    transition:none;
+    transform-origin:center;
+    box-shadow:0 8px 28px rgba(79,140,255,.55),inset 0 1px 0 rgba(255,255,255,.3);
+  }
+  #tabbar.dragging .tab.on .ic{transform:translateY(-1px) scale(1.06)}
+  /* 拖拽跟手时被覆盖的 tab 轻反馈 */
+  #tabbar.dragging .tab{opacity:.7}
+  #tabbar.dragging .tab.on{opacity:1}
   /* 每个 tab 页面：非激活隐藏 */
   .page{display:none}
   .page.on{display:block;animation:pageIn .26s ease}
@@ -263,7 +266,7 @@
   <h2>关于本 WebUI</h2>
   <div class="info" style="margin-top:0">
     📱 本界面为 CoreGate 的 APK 内置图形化控制台（WebUI），通过底部悬浮导航栏在四个页面间切换：<b>🔒锁核</b>（运行状态 / 核心可视化 / 锁核建议）、<b>🎮策略</b>（游戏包名 / 录屏相机 / 充电与检测间隔）、<b>⚙️限频</b>（日常限频与生效实况）、<b>⚙️设置</b>（诊断 / 测试 / 清理）。<br>
-    所有配置写入 <span class="mono" style="display:inline;background:none;border:none;padding:0">/data/adb/CoreGate/config.json</span>，点底部「保存配置」后约 5 秒内自动生效，无需重启。
+    所有配置写入 <span class="mono" style="display:inline;background:none;border:none;padding:0">/data/adb/CoreGate/config.json</span>，改完<b>约 0.6 秒自动保存</b>、约 5 秒内自动生效，无需重启，也无需手动点保存（「设置」页保留了手动兜底按钮）。
   </div>
   <div class="hint" style="margin-top:8px">全部修改仅作用于 sysfs 运行时，重启即还原，不写入任何系统分区，零残留、完全可逆。作者 zimky。</div>
 </div>
@@ -280,7 +283,7 @@
   <div id="gameSearchResult"></div>
   <div id="gameCount">已收录 <b id="gameCountNum">0</b> 个包名</div>
   <textarea id="game_packages" placeholder="每行一个包名，换行添加&#10;如：com.miHoYo.Yuanshen&#10;com.tencent.tmgp.sgame"></textarea>
-  <div class="hint" style="margin-top:8px">添加游戏：换行输入包名 → 点「保存配置」生效。命中列表 → 自动恢复全部核心。</div>
+  <div class="hint" style="margin-top:8px">添加游戏：换行输入包名 → <b>自动保存</b>生效。命中列表 → 自动恢复全部核心。</div>
 </div>
 
 <!-- 录屏 / 相机 -->
@@ -356,6 +359,20 @@
 <!-- ============ 第 4 页：设置（诊断 / 测试 / 清理） ============ -->
 <div class="page" id="page-misc">
 
+<!-- 保存配置（手动兜底：其余页面已自动保存，这里留一个显式按钮更安心） -->
+<div class="card">
+  <h2>💾 保存配置</h2>
+  <div class="info" style="margin-top:0">
+    ✅ 本界面已开启<b>自动保存</b>：你在任意页面修改开关或输入框后，约 0.6 秒即自动写入
+    <span class="mono" style="display:inline;background:none;border:none;padding:0">/data/adb/CoreGate/config.json</span>，
+    模块约 5 秒内自动生效，无需手动保存。
+  </div>
+  <div style="margin-top:11px">
+    <button class="primary" onclick="saveConfig()">立即保存一次（约 5 秒内生效）</button>
+  </div>
+  <div class="hint" style="margin-top:8px">若怀疑自动保存未生效，可点上方按钮手动补一次。</div>
+</div>
+
 <!-- 诊断 -->
 <div class="card">
   <h2>诊断 / 测试 / 清理</h2>
@@ -388,10 +405,7 @@
   <div class="tab" data-i="3" onclick="switchPage(3)"><span class="ic">⚙️</span>设置</div>
 </nav>
 
-<!-- 保存栏 -->
-<div class="savebar"><div class="inner">
-  <button class="primary" onclick="saveConfig()">保存配置（约 5 秒内自动生效）</button>
-</div></div>
+<!-- 保存栏已迁入「设置」页；其余页面改为自动保存 -->
 
 <div id="toast"></div>
 
@@ -464,68 +478,103 @@ function switchPage(i){
   }
 }
 
-// ---------- 导航栏长按 + 左右滑动手势（对齐 KernelSU 悬浮导航） ----------
-// 交互约定：
-//   · 轻点 Tab        → 立即切换该页
-//   · 长按(≈220ms)不放 → 进入拖拽态，左右滑动跟手切换页面，松手落定
-//   · 长按后未移动松开 → 视为一次普通点击
+// ---------- 导航栏手势（对齐 KernelSU 悬浮导航：长按即粘手 + 1:1 跟手拖拽） ----------
+// 交互约定（与 KSU 一致）：
+//   · 轻点 Tab            → 立即切换该页（松手瞬间触发 click）
+//   · 长按(≈180ms)不放    → 胶囊立即「粘手」，进入拖拽态
+//   · 拖拽中              → 胶囊以像素 1:1 跟手，实时高亮最近格，预显目标页
+//   · 松手                → Q弹吸附到最近 Tab 并落定切页
+//   · 长按后未移动就松开  → 视为一次普通点击（不吞掉）
 (function(){
   var bar = document.getElementById('tabbar');
-  if(!bar) return;
-  var LONG_MS = 220;          // 长按判定阈值
-  var MOVE_TOL = 10;          // 判定「还在长按」的位移容差(px)
-  var active = false;         // 是否已进入拖拽态
-  var startX = 0, startY = 0, curIdx = 0, lastIdx = -1;
-  var timer = null, suppressClick = false;
+  var ind = document.getElementById('pillInd');
+  if(!bar || !ind) return;
 
-  function barRect(){ return bar.getBoundingClientRect(); }
-  function idxByX(x){
-    var r = barRect();
-    var n = _PAGE_IDS.length;
-    var rel = (x - r.left) / r.width;              // 0~1
-    var i = Math.floor(rel * n);
+  var LONG_MS  = 180;   // 进入拖拽的判定阈值（比旧版 220ms 更灵敏，接近 KSU）
+  var MOVE_TOL = 8;     // 长按未达成前的位移容差(px)：超过即视为「想滚动页面」而取消长按
+  var n        = _PAGE_IDS.length;
+
+  var active   = false;   // 是否处于拖拽态
+  var startX   = 0, startY = 0;
+  var baseX    = 0;       // 进入拖拽时胶囊所处的像素基准偏移
+  var curIdx   = 0;       // 当前选中的页
+  var lastIdx  = -1;      // 拖拽中最近的高亮格
+  var timer    = null;
+  var suppressClick = false;
+  var moved    = false;   // 拖拽期间是否真的移动过（决定松手是落定还是当点击）
+
+  // 每格宽度（像素）：胶囊宽 + 右侧间隙由布局决定，直接量实测
+  function slotW(){
+    var tabs = bar.querySelectorAll('.tab');
+    if(tabs.length >= 2){
+      return tabs[1].getBoundingClientRect().left - tabs[0].getBoundingClientRect().left;
+    }
+    return bar.getBoundingClientRect().width / n;
+  }
+  // 第 i 格胶囊的目标像素偏移（相对 left:6px 的基准）
+  function pxOf(i){ return i * slotW(); }
+
+  // 把像素偏移直接落到胶囊 transform（1:1 跟手，无过渡）
+  function setPx(px){
+    ind.style.transform = 'translateX(' + px + 'px)';
+  }
+  function idxByPx(px){
+    var s = slotW();
+    if(s <= 0) return 0;
+    var i = Math.round(px / s);
     if(i < 0) i = 0; if(i > n - 1) i = n - 1;
     return i;
   }
-  function enterDrag(){
-    active = true;
-    bar.classList.add('dragging');
-    if(navigator.vibrate){ try{ navigator.vibrate(12); }catch(e){} }
-    // 拖拽中胶囊无过渡，跟手移动
-    var ind = document.getElementById('pillInd');
-    if(ind) ind.style.transition = 'none';
-  }
-  function moveTo(x){
-    var i = idxByX(x);
-    if(i === lastIdx) return;
-    lastIdx = i;
-    // 只移动胶囊 + 高亮，不切页（松手才落定，避免滑动中频繁触发刷新）
-    var ind = document.getElementById('pillInd');
-    if(ind) ind.style.transform = 'translateX(' + (i * 100) + '%)';
+  function hlTab(i){
     var tabs = bar.querySelectorAll('.tab');
     for(var t = 0; t < tabs.length; t++){
       tabs[t].classList[ (parseInt(tabs[t].getAttribute('data-i'),10) === i) ? 'add' : 'remove' ]('on');
     }
   }
+
+  function enterDrag(){
+    active = true; moved = false;
+    bar.classList.add('dragging');
+    ind.style.transition = 'none';
+    if(navigator.vibrate){ try{ navigator.vibrate(10); }catch(e){} }
+  }
+  // 拖拽跟手：x 为手指当前屏幕坐标
+  function dragTo(x){
+    var r = bar.getBoundingClientRect();
+    // 手指相对导航栏的偏移，映射为胶囊像素偏移（1:1）
+    var px = (x - r.left) - slotW() / 2;
+    var min = 0, max = (n - 1) * slotW();
+    if(px < min) px = min;
+    if(px > max) px = max;
+    if(Math.abs(px - baseX) > 1) moved = true;
+    setPx(px);
+    var i = idxByPx(px);
+    if(i !== lastIdx){
+      lastIdx = i;
+      hlTab(i);           // 实时高亮最近格（不切页，避免拖动中频繁刷新）
+    }
+  }
   function endDrag(commit){
     if(timer){ clearTimeout(timer); timer = null; }
-    var ind = document.getElementById('pillInd');
-    if(ind) ind.style.transition = '';
-    if(!active) return;
-    bar.classList.remove('dragging');
+    if(!active){ return; }
     active = false;
-    suppressClick = true;                       // 吞掉随后由手指松开产生的 click
+    bar.classList.remove('dragging');
+    ind.style.transition = '';           // 恢复 Q弹过渡，用于吸附
+    var target = commit ? (lastIdx < 0 ? curIdx : lastIdx) : curIdx;
+    setPx(pxOf(target));                 // 吸附到最近格（transform 过渡产生 Q弹）
+    suppressClick = true;                // 吞掉拖拽后补发的 click
     setTimeout(function(){ suppressClick = false; }, 350);
-    if(commit && lastIdx >= 0 && lastIdx !== curIdx){
-      switchPage(lastIdx);           // 落定到目标页
+    if(commit && moved && target !== curIdx) switchPage(target);
+    else if(commit && !moved){           // 长按未移动 → 当作普通点击该格
+      switchPage(target);
     } else {
-      switchPage(curIdx);            // 回到原位（未移动 / 取消）
+      hlTab(curIdx);                     // 取消：高亮还原
     }
     curIdx = _curPage;
     lastIdx = -1;
   }
 
-  // 拖拽结束后，浏览器仍会补发一次 click，这里在捕获阶段拦截，避免二次切换
+  // 拖拽结束后浏览器仍会补发 click，捕获阶段拦截避免二次切换
   bar.addEventListener('click', function(e){
     if(suppressClick){ e.stopPropagation(); e.preventDefault(); }
   }, true);
@@ -534,36 +583,37 @@ function switchPage(i){
     if(e.touches.length !== 1) return;
     var t = e.touches[0];
     startX = t.clientX; startY = t.clientY;
-    curIdx = _curPage; lastIdx = -1;
-    timer = setTimeout(function(){ enterDrag(); lastIdx = curIdx; }, LONG_MS);
+    curIdx = _curPage; lastIdx = -1; moved = false;
+    baseX = pxOf(curIdx);
+    timer = setTimeout(function(){ enterDrag(); }, LONG_MS);
   }, {passive:true});
 
   bar.addEventListener('touchmove', function(e){
     if(e.touches.length !== 1) return;
     var t = e.touches[0];
-    var dx = Math.abs(t.clientX - startX), dy = Math.abs(t.clientY - startY);
     if(!active){
-      // 长按未达成就滑动 → 取消长按，不拦截（让页面正常滚动）
+      // 长按未达成先滑动 → 判定为用户想滚动页面，取消长按
+      var dx = Math.abs(t.clientX - startX), dy = Math.abs(t.clientY - startY);
       if(dx > MOVE_TOL || dy > MOVE_TOL){ if(timer){ clearTimeout(timer); timer = null; } }
       return;
     }
-    // 已进入拖拽态：跟手移动且阻止页面滚动
-    if(e.cancelable) e.preventDefault();
-    moveTo(t.clientX);
+    if(e.cancelable) e.preventDefault();   // 拖拽中阻止页面滚动
+    dragTo(t.clientX);
   }, {passive:false});
 
   bar.addEventListener('touchend', function(){
     if(active){ endDrag(true); }
-    else if(timer){ clearTimeout(timer); timer = null; }  // 短按交给 click 处理
+    else if(timer){ clearTimeout(timer); timer = null; }   // 短按：交给 click 处理
   });
   bar.addEventListener('touchcancel', function(){ endDrag(false); });
 
-  // 鼠标（桌面调试）也支持长按拖拽
+  // 鼠标（桌面调试）同样支持长按拖拽
   bar.addEventListener('mousedown', function(e){
     if(e.button !== 0) return;
-    startX = e.clientX; curIdx = _curPage; lastIdx = -1;
-    timer = setTimeout(function(){ enterDrag(); lastIdx = curIdx; }, LONG_MS);
-    function mm(ev){ if(active){ ev.preventDefault(); moveTo(ev.clientX); } }
+    curIdx = _curPage; lastIdx = -1; moved = false;
+    startX = e.clientX; baseX = pxOf(curIdx);
+    timer = setTimeout(function(){ enterDrag(); }, LONG_MS);
+    function mm(ev){ if(active){ ev.preventDefault(); dragTo(ev.clientX); } }
     function mu(){ document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); endDrag(true); }
     document.addEventListener('mousemove', mm);
     document.addEventListener('mouseup', mu);
@@ -622,7 +672,7 @@ function collect(){
   updateGameCount();
 }
 
-function saveConfig(){
+function saveConfig(silent){
   collect();
   delete cfg.game_packages;
   delete cfg.match_mode;
@@ -631,8 +681,52 @@ function saveConfig(){
   var cmd = "echo '" + b + "' | base64 -d > " + TMP + " && mv " + TMP + " " + CFG + " && chmod 644 " + CFG + " && " +
             "echo '" + bp + "' | base64 -d > " + PACKAGES_TMP + " && mv " + PACKAGES_TMP + " " + PACKAGES + " && chmod 644 " + PACKAGES + " && echo OK";
   sh(cmd).then(function(r){
-    if(r.stdout.indexOf('OK') >= 0){ toast('已保存，约 5 秒内自动生效', 'ok'); loadPackages(); }
-    else toast('保存失败：' + (r.stderr || r.stdout || 'unknown'), 'error');
+    if(r.stdout.indexOf('OK') >= 0){
+      if(!silent) toast('已保存，约 5 秒内自动生效', 'ok');   // 自动保存静默，手动点击才提示
+      loadPackages();
+    } else {
+      toast('保存失败：' + (r.stderr || r.stdout || 'unknown'), 'error');   // 失败始终提示
+    }
+  });
+}
+
+// ---------- 自动保存 ----------
+// 其余页面已取消「底部保存栏」，任何配置控件改动后约 0.6 秒自动写入 config.json。
+// 复用 saveConfig()（内部已 delete 旧字段 + 写 config.json + packages.txt）。
+// 关键防抖：连续拖动滑块 / 快速打字只在停顿后写一次，避免高频 root 写入。
+var _autoSaveTimer = null;
+var _autoSaveBound = false;
+var AUTO_SAVE_DELAY = 600;   // ms
+
+function scheduleAutoSave(){
+  if(_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(function(){
+    _autoSaveTimer = null;
+    // 静默保存：不弹「已保存」toast（自动保存频繁提示会很吵），失败才提示
+    saveConfig(true);
+  }, AUTO_SAVE_DELAY);
+}
+
+// 绑定所有配置控件的改动监听（开关 change / 输入框 input）
+function bindAutoSave(){
+  if(_autoSaveBound) return;
+  _autoSaveBound = true;
+  var ids = ['enabled', 'lock_cores', 'disable_core_ctl', 'limit_freq',
+             'no_lock_charging', 'capture_boost', 'poll_interval', 'game_packages'];
+  ids.forEach(function(id){
+    var el = $(id);
+    if(!el) return;
+    // checkbox 用 change；文本/数字/textarea 用 input（含粘贴）
+    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', scheduleAutoSave);
+  });
+  // 离开输入框时立刻落盘一次，防止用户改完马上杀进程
+  var idsBlur = ['lock_cores', 'poll_interval', 'game_packages'];
+  idsBlur.forEach(function(id){
+    var el = $(id);
+    if(!el) return;
+    el.addEventListener('blur', function(){
+      if(_autoSaveTimer){ clearTimeout(_autoSaveTimer); _autoSaveTimer = null; saveConfig(true); }
+    });
   });
 }
 
@@ -775,7 +869,7 @@ function searchGames(){
     el.innerHTML = '✅ 在列表中：找到 <b>' + hit.length + '</b> 个<br>' + hit.slice(0,10).join('<br>') + (hit.length > 10 ? '<br>…' : '');
     el.style.color = '#7ee2a0';
   } else {
-    el.innerHTML = '❌ 列表中没有「' + $('gameSearch').value.trim() + '」<br>可在下方输入框换行添加后点「保存配置」';
+    el.innerHTML = '❌ 列表中没有「' + $('gameSearch').value.trim() + '」<br>可在下方输入框换行添加（自动保存生效）';
     el.style.color = '#ffb3ab';
   }
 }
@@ -1003,6 +1097,9 @@ function cleanupAll(){
 
 $('game_packages').addEventListener('input', updateGameCount);
 $('gameSearch').addEventListener('input', searchGames);
+
+// 启用自动保存：所有配置控件改动 0.6 秒后自动写入（设置页仍保留手动兜底按钮）
+bindAutoSave();
 
 loadConfig().then(refreshAll);
 // 自动轮询：改为 8 秒一次（原 5 秒过密，配合串行队列后进一步降低 root 进程创建频率）。
