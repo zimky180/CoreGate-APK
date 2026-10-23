@@ -11,8 +11,8 @@
   exported=true 且带 LAUNCHER，是让桌面能点开。
   taskAffinity 保持默认，跟模块管理器互不影响。
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.zimky.coregateUS">
+<!-- AGP 9 起 manifest 的 package 属性已废弃并被忽略，包名统一由 build.gradle 的 namespace 决定。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
         android:allowBackup="false"

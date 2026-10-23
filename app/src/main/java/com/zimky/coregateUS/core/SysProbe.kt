@@ -27,7 +27,7 @@ object SysProbe {
 
     /** 一整次探测的结果。 */
     data class Snapshot(
-        val cores: List<Core> = emptyList(),
+        var cores: List<Core> = emptyList(),
         var onlineCount: Int = 0,
         /** Hz */
         var gpuCur: Long = 0,
@@ -76,8 +76,10 @@ object SysProbe {
         c.append("echo \"GDEVF:\"; cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null; ")
         // daemon 与 state
         c.append("echo \"STATEB:\"; ")
+        // 注意：shell 变量 $PID 必须转义成 ${'$'}PID，否则 Kotlin 会把它当成字符串模板，
+        // 报 Unresolved reference 'PID'。
         c.append("PID=$(cat ").append(Paths.PID).append(" 2>/dev/null); ")
-        c.append("if [ -n \"$PID\" ] && kill -0 \"$PID\" 2>/dev/null; then echo \"ALIVE:$PID\"; else echo \"DEAD:$PID\"; fi; ")
+        c.append("if [ -n \"${'$'}PID\" ] && kill -0 \"${'$'}PID\" 2>/dev/null; then echo \"ALIVE:${'$'}PID\"; else echo \"DEAD:${'$'}PID\"; fi; ")
         c.append("echo \"STATEF:\"; cat ").append(Paths.STATE).append(" 2>/dev/null; ")
         c.append("echo \"ENDPROBE:\"")
 

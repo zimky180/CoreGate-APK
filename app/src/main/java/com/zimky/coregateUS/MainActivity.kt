@@ -105,8 +105,11 @@ private fun AppRoot() {
     // 注意这里必须用 rememberLayerBackdrop（非空），不能用 rememberBlurBackdrop ——
     // 后者是给 BlurredBar 用的可空版本，而 FloatingBottomBar 的形参是非空 Backdrop。
     // 这里的写法与 KSU ui/MainActivity.kt 完全一致。
+    // 关键：colorScheme 只能在 @Composable 上下文读取，而 rememberLayerBackdrop 的
+    // lambda 不是 @Composable，所以必须先在外层取出 surfaceColor 再闭包捕获。
+    val surfaceColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {
-        drawRect(MiuixTheme.colorScheme.surface)
+        drawRect(surfaceColor)
         drawContent()
     }
 

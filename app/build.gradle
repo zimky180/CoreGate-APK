@@ -10,7 +10,11 @@ android {
 
     defaultConfig {
         applicationId "com.zimky.coregateUS"
-        minSdk 26
+        // minSdk 33：miuix-blur-android:0.9.4 的 AAR 清单声明 minSdk 33。
+        // 本项目面向骁龙 8 Gen 5 一代（Android 16/17、内核 6.6~6.12），
+        // 且运行依赖 KernelSU，实际设备全部在 API 33 以上，故直接对齐到 33，
+        // 不用 tools:overrideLibrary 绕过检查（绕过会失去构建期保护）。
+        minSdk 33
         targetSdk 37
         versionCode 220
         versionName "2.2.0"

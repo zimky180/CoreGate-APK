@@ -20,7 +20,6 @@ import androidx.compose.ui.util.fastCoerceIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import com.zimky.coregateUS.ui.component.miuix.modifier.inspectDragGestures
-import org.intellij.lang.annotations.Language
 
 @SuppressLint("NewApi")
 class InteractiveHighlight(
@@ -45,7 +44,6 @@ class InteractiveHighlight(
     // minSdk 26 下不能作为构造期成员直接实例化，否则 API 26~32 设备在装载本类时
     // 会抛 NoClassDefFoundError。这里改为懒加载 + 版本守卫：
     // 低版本机器 shader 恒为 null，drawWithContent 只跳过 shader 绘制，其余交互不受影响。
-    @Language("AGSL")
     private val shader: RuntimeShader? by lazy {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             null
