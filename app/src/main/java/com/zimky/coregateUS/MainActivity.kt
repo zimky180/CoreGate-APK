@@ -8,8 +8,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateBottomPadding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
@@ -23,7 +28,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -77,12 +86,45 @@ private const val MIN_REFRESH_GAP = 1_200L
 private val TAB_TITLES = listOf("锁核", "策略", "限频", "设置")
 
 /**
- * 页面槽位：四页常驻，只切可见性。
- * 用 alpha 0 + 不可点击而不是 if(...) 销毁，避免滚动位置和输入内容丢失。
+ * 内容区底部留白。
+ *
+ * 底栏是「悬浮」在内容之上的（Box + align(BottomCenter)），不是 Scaffold 的 bottomBar 槽位，
+ * 所以内容区不会自动让出底栏占用的高度，必须手动留白，否则每页最后一张卡片会被底栏挡住。
+ *
+ * 这个值由三部分组成：
+ *   1) 底栏自身高度 64.dp（FloatingBottomBar 内部 .height(64.dp)）；
+ *   2) 底栏底部间距，正常是 28.dp，带手势条时是 8.dp + 手势条高度（约 24.dp），两者接近；
+ *   3) 8.dp 缓冲，让最后一张卡片和底栏之间留一点缝，不贴死。
+ *
+ * 取 28.dp 这一档来算：64 + 28 + 8 = 100.dp。
+ * 手势条机型实际底栏占位约 64 + 32 = 96.dp，100.dp 仍有余量，不会露。
+ * 之所以不写成变量联动 barBottomPadding：那个值在 AppRoot 内部才能拿到，
+ * 而 padding 是 Compose 每次重组都会重算的，写死一个够用的常量更简单也更稳。
+ */
+private val CONTENT_BOTTOM_PADDING = 100.dp
+
+/**
+ * 页面槽位：四页常驻 composition，切 Tab 只切换可见性，不销毁重建。
+ *
+ * 之前误写成 `if (visible) content()`，每次切 Tab 都会销毁整棵子树，
+ * 滚动位置和输入框内容全部丢失，与类注释里「滚动位置与输入内容都不丢」的承诺不符。
+ *
+ * 现在改为常驻 + alpha 0/1 + 不可交互：
+ *   - alpha 而不是 visibility，是因为 Compose 没有 Android View 那种 GONE，
+ *     用 alpha 0 隐藏可以保留滚动状态与焦点；
+ *   - 隐藏时清掉 pointerInput，避免透明的页面截走点击。
+ * 注意：不可见页面仍在内存里，四页都是轻量列表，代价可接受。
  */
 @Composable
 private fun PageSlot(visible: Boolean, content: @Composable () -> Unit) {
-    if (visible) content()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .alpha(if (visible) 1f else 0f)
+            .then(if (visible) Modifier else Modifier.pointerInput(Unit) {})
+    ) {
+        content()
+    }
 }
 
 @Composable
@@ -202,12 +244,14 @@ private fun AppRoot() {
             .background(MiuixTheme.colorScheme.background)
     ) {
         // 内容区：四页常驻，只显示当前那个。
-        // 底部预留导航栏高度，避免最后一张卡片被底栏挡住。
+        // 底部留白 = 底栏高度（64dp）+ 底栏底部间距 + 一点缓冲，避免最后一张卡片被底栏挡住。
+        // 注意这里的留白要和下面 FloatingBottomBar 的 padding 保持一致，
+        // 底栏从「贴合屏幕底部」改成了「KSU 同款 28dp 悬浮」后，需要多留出这段距离。
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(bottom = 62.dp)
+                .padding(bottom = CONTENT_BOTTOM_PADDING)
         ) {
             PageSlot(visible = currentTab == 0) {
                 LockPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
@@ -224,10 +268,23 @@ private fun AppRoot() {
         }
 
         // 悬浮液态底栏
+        //
+        // 宽度策略严格对齐 KernelSU 官方（BottomBarMiuix.kt + MainActivity 的 Scaffold(bottomBar=…)）：
+        //   - KSU 把底栏交给 Scaffold 的 bottomBar 槽位，该槽位横向撑满，所以组件内部的
+        //     width(IntrinsicSize.Min) 拿到的是「整屏宽 - 边距」这个确定值，不会塌缩；
+        //   - 这里用 Box 排版，等价写法是显式 fillMaxWidth() 撑满 + 左右 28.dp 边距；
+        //   - 底部间距照抄 KSU：有导航栏 inset 时取 8.dp + inset，否则 28.dp。
+        //   缺了 fillMaxWidth()，IntrinsicSize.Min 会把宽度收缩到最小值，
+        //   再被 CircleShape 裁成圆 → 文字竖排、圆圈极小（v2.2.0 初版实测到的缺陷）。
+        val navBottomInset = WindowInsets.navigationBars
+            .asPaddingValues()
+            .calculateBottomPadding()
+        val barBottomPadding = if (navBottomInset != 0.dp) 8.dp + navBottomInset else 28.dp
         FloatingBottomBar(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding(),
+                .fillMaxWidth()
+                .padding(start = 28.dp, end = 28.dp, bottom = barBottomPadding),
             selectedIndex = currentTab,
             onSelected = { currentTab = it },
             backdrop = backdrop,
@@ -237,9 +294,17 @@ private fun AppRoot() {
             TAB_TITLES.forEachIndexed { i, title ->
                 FloatingBottomBarItem(
                     selected = currentTab == i,
-                    onClick = { activateTab(i) }
+                    onClick = { activateTab(i) },
+                    modifier = Modifier.defaultMinSize(minWidth = 76.dp)
                 ) {
-                    Text(text = title)
+                    Text(
+                        text = title,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Visible
+                    )
                 }
             }
         }
