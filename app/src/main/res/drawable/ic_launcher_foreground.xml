@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标前景：一枚圆角方框 + 内部两个小方块，呼应导航栏「锁核」图标的视觉语言 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 外框 -->
+    <path
+        android:pathData="M38,32 L70,32 A6,6 0 0 1 76,38 L76,70 A6,6 0 0 1 70,76 L38,76 A6,6 0 0 1 32,70 L32,38 A6,6 0 0 1 38,32 Z"
+        android:strokeColor="#4F8CFF"
+        android:strokeWidth="4"
+        android:fillColor="#00000000" />
+
+    <!-- 左上小块（实心，代表在线的核心） -->
+    <path
+        android:pathData="M42,42 h10 v10 h-10 z"
+        android:fillColor="#4F8CFF" />
+
+    <!-- 右下小块（描边，代表被压制的核心） -->
+    <path
+        android:pathData="M56,56 h10 v10 h-10 z"
+        android:strokeColor="#34C759"
+        android:strokeWidth="3"
+        android:fillColor="#00000000" />
+
+</vector>

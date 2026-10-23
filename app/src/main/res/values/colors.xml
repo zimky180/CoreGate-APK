@@ -1,15 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  色值与 Java 侧的 Ui 类保持一致。这里只放主题/窗口级别用得到的颜色，
+  控件内部全部走 Ui.ACC / Ui.OK 这些常量，不从这里读。
+-->
 <resources>
-    <color name="bg_top">#FF0B1220</color>
-    <color name="bg_bottom">#FF05070D</color>
-    <color name="glass_white">#26FFFFFF</color>
-    <color name="glass_stroke">#33FFFFFF</color>
-    <color name="accent">#FF4DA3FF</color>
-    <color name="accent_dim">#664DA3FF</color>
-    <color name="text_main">#FFEDF2FA</color>
-    <color name="text_sub">#99A7B4C9</color>
-    <color name="ok_green">#FF3DD68C</color>
-    <color name="warn_amber">#FFFFB454</color>
-    <color name="err_red">#FFFF6B6B</color>
-    <color name="card_bg">#1AFFFFFF</color>
+    <color name="cg_bg">#FF080B12</color>
+    <color name="cg_bar">#E60E1219</color>
+    <color name="cg_acc">#FF4F8CFF</color>
+    <color name="cg_icon_bg">#FF0E1420</color>
 </resources>

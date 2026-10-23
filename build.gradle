@@ -1,4 +1,5 @@
-// 顶层构建文件：只声明插件版本，具体应用在模块中
+// 顶层构建脚本：只声明插件版本，真正配置在各模块里
+// 版本与仓库已验证过的组合保持一致（AGP 8.2.2 + Gradle 8.2），少一个变量
 plugins {
     id 'com.android.application' version '8.2.2' apply false
 }

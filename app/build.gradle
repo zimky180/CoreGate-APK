@@ -2,22 +2,43 @@ plugins {
     id 'com.android.application'
 }
 
+/*
+ * 原生版构建脚本。
+ *
+ * 与旧 WebView 壳的关键差异：dependencies 是空的。
+ *   - 不用 appcompat：Activity 用系统的 android.app.Activity；
+ *   - 不用 material：所有卡片、开关、滑块、导航栏都是自己画的；
+ *   - 不用 fragment：四页是四个普通 View 树，靠 setVisibility 切换。
+ *
+ * 带来的好处：
+ *   1) APK 体积从 ~2MB 降到几十 KB 量级；
+ *   2) 没有任何 SupportLibrary 初始化，冷启动更快；
+ *   3) 不依赖 WebView 运行时，刷了精简 WebView 的机器也能正常用。
+ *
+ * minSdk 23 是权衡结果：系统的 Java 8 语法糖（lambda 用 desugar 兜底）
+ * 和 RenderEffect 都不能指望，所以模糊全部走 BlurMaskFilter，
+ * 这是 API 1 就有的能力，低版本一样能跑。
+ */
 android {
-    namespace 'com.zimky.coregate'
+    namespace 'com.zimky.coregateUS'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.zimky.coregate"
+        applicationId "com.zimky.coregateUS"
         minSdk 23
         targetSdk 34
-        versionCode 210
-        versionName "2.1.0"
+        versionCode 220
+        versionName "2.2.0"
     }
 
     buildTypes {
         release {
+            // 代码量很小，混淆收益有限，但求稳：关掉，出问题好排查
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            applicationIdSuffix ''
         }
     }
 
@@ -25,11 +46,15 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+
+    // 不打包任何签名以外的多余东西
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+        }
+    }
 }
 
 dependencies {
-    implementation fileTree(dir: "libs", include: ["*.jar"])
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.fragment:fragment:1.6.2'
-    implementation 'com.google.android.material:material:1.11.0'
+    // 故意为空：零第三方依赖
 }

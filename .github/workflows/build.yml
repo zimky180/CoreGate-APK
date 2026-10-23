@@ -51,12 +51,12 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p out
-          cp "${{ steps.apk.outputs.path }}" "out/CoreGate-APK-debug-v2.1.0.apk"
+          cp "${{ steps.apk.outputs.path }}" "out/CoreGate-native-debug-v2.2.0.apk"
           ls -l out
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-APK-debug-v2.1.0
-          path: out/CoreGate-APK-debug-v2.1.0.apk
+          name: CoreGate-native-debug-v2.2.0
+          path: out/CoreGate-native-debug-v2.2.0.apk
           if-no-files-found: error

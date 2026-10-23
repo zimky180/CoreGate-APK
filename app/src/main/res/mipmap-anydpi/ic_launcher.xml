@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 25 及以下的图标兜底。用 layer-list 把同样的矢量拼成一个方图标，
+  这样全版本都不需要任何 PNG 位图资源，res 目录里零二进制文件。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>

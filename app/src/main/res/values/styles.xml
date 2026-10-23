@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  主题选择：直接用系统 Material 深色基础，不引入 appcompat / material 库。
+  理由：整个界面全是自绘 View，唯一需要主题的地方就是窗口背景和状态栏。
+  用 android:Theme.Material.NoActionBar 能保持零依赖，APK 体积最小。
+
+  windowBackground 设成和内容区一致的深底，避免冷启动时白屏闪一下。
+-->
 <resources>
-    <!--
-      CoreGate APK 主题。
-      UI 全部由 WebView 里的 assets/index.html 渲染（含液态玻璃 CSS），
-      这里只留最基础的主题：全屏无标题栏 + 全屏背景色，避免启动时白屏闪烁。
-    -->
-    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">@drawable/bg_gradient</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+    <style name="Theme.CoreGate" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/cg_bg</item>
+        <item name="android:colorBackground">@color/cg_bg</item>
+        <item name="android:statusBarColor">@color/cg_bg</item>
+        <item name="android:navigationBarColor">@color/cg_bar</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="colorAccent">@color/accent</item>
-        <item name="colorPrimary">@color/accent</item>
-        <item name="colorPrimaryDark">@color/bg_bottom</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
+
 </resources>

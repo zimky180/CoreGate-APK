@@ -1,30 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<!--
+  CoreGate 原生壳。
 
-    <uses-permission android:name="android.permission.INTERNET" />
+  权限说明：
+    - 只申请 INTERNET 之外的权限吗？不。这里一个危险权限都不要。
+    - root 通过 su 命令拿，不需要在清单里声明任何权限；
+      KernelSU / Magisk 是在 su 进程里授权，跟 APK 清单无关。
+    - QUERY_ALL_PACKAGES 也不需要：包名列表是纯文本，不做应用枚举。
+
+  exported=true 且带 LAUNCHER，是让桌面能点开。
+  taskAffinity 保持默认，跟模块管理器互不影响。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.zimky.coregateUS">
 
     <application
-        android:icon="@drawable/ic_launcher"
-        android:label="@string/app_name"
-        android:theme="@style/AppTheme"
         android:allowBackup="false"
-        android:resizeableActivity="true">
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.CoreGate">
 
         <activity
             android:name=".MainActivity"
-            android:label="@string/app_name"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize"
             android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <meta-data
-            android:name="android.max_aspect"
-            android:value="4.0" />
 
     </application>
 
