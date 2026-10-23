@@ -169,7 +169,7 @@ public class SettingsPage extends Page {
         LinearLayout foot = Ui.horz(ctx);
         foot.setGravity(Gravity.CENTER_VERTICAL);
         foot.addView(makeButton("读取日志", Ui.ACC, v -> loadLog()), Ui.lp(-2, -1));
-        foot.addView(Ui.spacer(ctx, 0, 0, 10, 0), new LinearLayout.LayoutParams(0, 0));
+        foot.addView(Ui.hspacer(ctx, 10), new LinearLayout.LayoutParams(0, 0));
         foot.addView(makeButton("清空日志", Ui.ERR, v -> clearLog()), Ui.lp(-2, -1));
         c.addWrap(foot, 0);
     }

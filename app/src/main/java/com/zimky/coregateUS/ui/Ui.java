@@ -109,6 +109,13 @@ public final class Ui {
         return v;
     }
 
+    /** 横向间隔：宽 wDp，高 1px（放进横向 LinearLayout 里用） */
+    public static View hspacer(Context c, float wDp) {
+        View v = new View(c);
+        v.setLayoutParams(new LinearLayout.LayoutParams(dp(c, wDp), 1));
+        return v;
+    }
+
     public static View divider(Context c) {
         View v = new View(c);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
