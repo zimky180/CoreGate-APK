@@ -67,8 +67,8 @@ public class PolicyPage extends Page {
 
         c.addDivider();
 
-        TextView note = Ui.hint(ctx, "检测名单内置了常见录屏与相机包名（含 ColorOS / OxygenOS）。
-关闭此项后，模块只认 packages.txt 里的游戏列表。");
+        TextView note = Ui.hint(ctx, "检测名单内置了常见录屏与相机包名（含 ColorOS / OxygenOS）。"
+                + "关闭此项后，模块只认 packages.txt 里的游戏列表。");
         c.addWrap(note, 0);
     }
 
