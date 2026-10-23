@@ -1,0 +1,182 @@
+package com.zimky.coregateUS.core
+
+import java.util.Locale
+
+/**
+ * SysProbe —— 系统状态探测。
+ *
+ * 全部走一次 root shell 批量读，拿回一份带标记的文本再在 Kotlin 侧解析，
+ * 目的是把 root 调用次数压到最少（每次 root 都是一次 su 进程，狂刷会被
+ * 系统安全机制误判成入侵，v2.0.6 踩过这个坑）。
+ */
+object SysProbe {
+
+    /** 单个核心快照。 */
+    data class Core(
+        var id: Int = 0,
+        var online: Boolean = false,
+        /** kHz */
+        var curFreq: Long = 0,
+        /** kHz（cpuinfo_max_freq，厂商标称） */
+        var maxFreq: Long = 0,
+        /** kHz（scaling_available_frequencies 最大值，真实合法上限） */
+        var availMax: Long = 0,
+        /** "little" / "big" */
+        var cluster: String = "little"
+    )
+
+    /** 一整次探测的结果。 */
+    data class Snapshot(
+        val cores: List<Core> = emptyList(),
+        var onlineCount: Int = 0,
+        /** Hz */
+        var gpuCur: Long = 0,
+        /** Hz */
+        var gpuMax: Long = 0,
+        var gpuPwrLevel: Int = -1,
+        var gpuNumLevels: Int = -1,
+        /** state 文件第一段（前台包名） */
+        var statePkg: String = "",
+        var stateRaw: String = "",
+        var daemonAlive: Boolean = false,
+        var daemonPid: Int = -1,
+        /** policy0 scaling_max_freq */
+        var littleMaxCur: Long = 0,
+        /** policy6 scaling_max_freq */
+        var bigMaxCur: Long = 0,
+        var dbg: String = ""
+    )
+
+    /** 一次 root 拿全量状态。 */
+    fun probe(sh: RootShell, cb: (Snapshot) -> Unit) {
+        val c = StringBuilder()
+        // 核心在线状态 0..7
+        for (i in 0..7) {
+            c.append("echo \"ON").append(i).append(":\"; cat /sys/devices/system/cpu/cpu")
+                .append(i).append("/online 2>/dev/null; ")
+        }
+        // 每个核心当前频率与上限
+        for (i in 0..7) {
+            val base = "/sys/devices/system/cpu/cpu$i/cpufreq/"
+            c.append("echo \"CU").append(i).append(":\"; cat ").append(base)
+                .append("scaling_cur_freq 2>/dev/null; ")
+            c.append("echo \"MX").append(i).append(":\"; cat ").append(base)
+                .append("cpuinfo_max_freq 2>/dev/null; ")
+            c.append("echo \"AV").append(i).append(":\"; cat ").append(base)
+                .append("scaling_available_frequencies 2>/dev/null; ")
+        }
+        // 簇上限
+        c.append("echo \"LMAX:\"; cat /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; ")
+        c.append("echo \"BMAX:\"; cat /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null; ")
+        // GPU
+        c.append("echo \"GCUR:\"; cat /sys/class/kgsl/kgsl-3d0/gpuclk 2>/dev/null; ")
+        c.append("echo \"GMAX:\"; cat /sys/class/kgsl/kgsl-3d0/max_gpuclk 2>/dev/null; ")
+        c.append("echo \"GPLV:\"; cat /sys/class/kgsl/kgsl-3d0/max_pwrlevel 2>/dev/null; ")
+        c.append("echo \"GNUM:\"; cat /sys/class/kgsl/kgsl-3d0/num_pwrlevels 2>/dev/null; ")
+        c.append("echo \"GDEVF:\"; cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null; ")
+        // daemon 与 state
+        c.append("echo \"STATEB:\"; ")
+        c.append("PID=$(cat ").append(Paths.PID).append(" 2>/dev/null); ")
+        c.append("if [ -n \"$PID\" ] && kill -0 \"$PID\" 2>/dev/null; then echo \"ALIVE:$PID\"; else echo \"DEAD:$PID\"; fi; ")
+        c.append("echo \"STATEF:\"; cat ").append(Paths.STATE).append(" 2>/dev/null; ")
+        c.append("echo \"ENDPROBE:\"")
+
+        sh.exec(c.toString()) { code, out, _ ->
+            val s = Snapshot()
+            s.dbg = "exit=$code"
+            if (out.isEmpty()) {
+                s.dbg += " · 无输出（root 未授权？）"
+                cb(s)
+                return@exec
+            }
+
+            val cores = mutableListOf<Core>()
+            for (i in 0..7) {
+                val core = Core(id = i)
+                val onRaw = line(out, "ON$i")
+                // cpu0 没有 online 节点，视为在线
+                core.online = if (onRaw.isNullOrEmpty()) i == 0 else onRaw.trim() == "1"
+                core.curFreq = num(line(out, "CU$i"))
+                core.maxFreq = num(line(out, "MX$i"))
+
+                val avail = line(out, "AV$i")
+                if (!avail.isNullOrEmpty()) {
+                    var best = 0L
+                    for (p in avail.trim().split(Regex("\\s+"))) {
+                        val v = num(p)
+                        if (v > best) best = v
+                    }
+                    core.availMax = best
+                }
+
+                core.cluster = if (i >= 6) "big" else "little"
+
+                if (core.online) s.onlineCount++
+                cores.add(core)
+            }
+            s.cores = cores
+
+            s.littleMaxCur = num(line(out, "LMAX"))
+            s.bigMaxCur = num(line(out, "BMAX"))
+
+            s.gpuCur = num(line(out, "GCUR"))
+            s.gpuMax = num(line(out, "GMAX"))
+            val plv = line(out, "GPLV")
+            if (!plv.isNullOrEmpty()) s.gpuPwrLevel = num(plv).toInt()
+            val gnum = line(out, "GNUM")
+            if (!gnum.isNullOrEmpty()) s.gpuNumLevels = num(gnum).toInt()
+
+            val stateb = line(out, "STATEB")
+            if (stateb != null && stateb.startsWith("ALIVE:")) {
+                s.daemonAlive = true
+                s.daemonPid = num(stateb.substring(6)).toInt()
+            } else if (stateb != null && stateb.startsWith("DEAD:")) {
+                s.daemonAlive = false
+                s.daemonPid = num(stateb.substring(5)).toInt()
+            }
+
+            val st = line(out, "STATEF")
+            if (st != null) {
+                s.stateRaw = st.trim()
+                val seg = s.stateRaw.split(Regex("\\s+"))
+                if (seg.isNotEmpty()) s.statePkg = seg[0]
+            }
+
+            cb(s)
+        }
+    }
+
+    /** 取 "TAG:" 标记后同一行剩余内容。 */
+    private fun line(out: String, tag: String): String? {
+        val i = out.indexOf("$tag:")
+        if (i < 0) return null
+        val start = i + tag.length + 1
+        var end = out.indexOf('\n', start)
+        if (end < 0) end = out.length
+        return out.substring(start, end).trim()
+    }
+
+    private fun num(s: String?): Long {
+        if (s == null) return 0
+        var t = s.trim()
+        if (t.isEmpty()) return 0
+        // 可能带多个空格分隔的多个数字，取第一个
+        val sp = t.indexOf(' ')
+        if (sp > 0) t = t.substring(0, sp)
+        return t.toLongOrNull() ?: 0L
+    }
+
+    /** kHz → "2.27 GHz" 风格。 */
+    fun fmtMhz(khz: Long): String {
+        if (khz <= 0) return "—"
+        val mhz = khz / 1000.0
+        return if (mhz >= 1000) String.format(Locale.US, "%.2f GHz", mhz / 1000.0)
+        else String.format(Locale.US, "%.0f MHz", mhz)
+    }
+
+    /** Hz → MHz 字符串。 */
+    fun fmtGpu(hz: Long): String {
+        if (hz <= 0) return "—"
+        return String.format(Locale.US, "%.0f MHz", hz / 1000000.0)
+    }
+}
