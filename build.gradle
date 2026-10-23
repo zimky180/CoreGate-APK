@@ -1,6 +1,18 @@
 // 顶层构建脚本：只声明插件版本，真正配置在各模块里
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    dependencies {
+        // AGP 9.x 内建 Kotlin 统一停在 2.2.10，而 Miuix 0.9.4 要求 stdlib 2.4.20，
+        // 因此必须在这里显式把 KGP 提升到 2.4.21（Kotlin 2.4 只需 AGP >= 8.5.2，9.1.1 满足）
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21"
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
 }

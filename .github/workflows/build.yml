@@ -30,13 +30,13 @@ jobs:
           [ -x "$SM" ] || SM=$(find "$SDK/cmdline-tools" -name sdkmanager -type f | head -n 1)
           echo "sdkmanager -> $SM"
           yes | "$SM" --licenses > /dev/null 2>&1 || true
-          "$SM" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          "$SM" "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
 
-      # Kotlin 2.0 + AGP 8.7 需要 Gradle >= 8.9，这里显式指定，不依赖仓库里的 wrapper
+      # AGP 9.1.1 要求 Gradle >= 9.3.1，这里显式指定，不依赖仓库里的 wrapper
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.11.1'
+          gradle-version: '9.3.1'
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace

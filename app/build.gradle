@@ -1,17 +1,17 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // AGP 9 内建 Kotlin 支持，不再 apply org.jetbrains.kotlin.android（与新 DSL 不兼容）
     alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace 'com.zimky.coregateUS'
-    compileSdk 35
+    compileSdk 37
 
     defaultConfig {
         applicationId "com.zimky.coregateUS"
         minSdk 26
-        targetSdk 35
+        targetSdk 37
         versionCode 220
         versionName "2.2.0"
     }
@@ -28,10 +28,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-
     buildFeatures {
         compose true
     }
@@ -40,6 +36,13 @@ android {
         resources {
             excludes += ['/META-INF/{AL2.0,LGPL2.1}']
         }
+    }
+}
+
+// AGP 9 新 DSL 下 kotlinOptions 已移除，改用 Kotlin 扩展的 compilerOptions
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
