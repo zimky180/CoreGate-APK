@@ -36,9 +36,10 @@ import com.zimky.coregateUS.ui.Gap
 import com.zimky.coregateUS.ui.HairLine
 import com.zimky.coregateUS.ui.Semantic
 import top.yukonga.miuix.kmp.basic.Badge
-import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -258,14 +259,14 @@ fun LockPage(
                 )
                 Gap(14.dp)
 
-                Button(
+                TextButton(
                     text = if (busy) "封锁中…" else "封锁高频核心",
                     onClick = {
-                        if (busy) return@Button
+                        if (busy) return@TextButton
                         if (!serviceExists()) {
                             lockMsg = "未找到模块 service.sh，请确认 CoreGate 已正确安装并重启过。"
                             lockMsgColor = Semantic.ERR
-                            return@Button
+                            return@TextButton
                         }
                         busy = true
                         lockMsg = ""
@@ -282,7 +283,8 @@ fun LockPage(
                         }
                     },
                     enabled = !busy,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColorsPrimary()
                 )
 
                 if (lockMsg.isNotEmpty()) {
