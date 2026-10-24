@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
@@ -36,8 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.awaitPointerEventScope
-import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextOverflow
@@ -180,16 +179,12 @@ private fun PageSlot(visible: Boolean, content: @Composable () -> Unit) {
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         awaitEachGesture {
-                            awaitPointerEventScope {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                down.consume()
-                                // 一直吃到这一指抬起为止
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    event.changes.forEach { it.consume() }
-                                    if (event.changes.all { it.changedToUpIgnoreConsumed() }) break
-                                }
-                            }
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            // 一直吃到这一指抬起为止：waitForUpOrCancellation 会持续
+                            // 消费后续的移动 / 抬起事件，没有中间事件能漏给下层 scroll。
+                            val up = waitForUpOrCancellation()
+                            if (up != null) up.consume()
                         }
                     }
             )
