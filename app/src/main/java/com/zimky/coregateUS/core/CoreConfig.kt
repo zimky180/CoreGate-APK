@@ -295,6 +295,43 @@ data class CoreConfig(
         }
     }
 }
-
-/** 模块文件是否就位（免 root 判断）。 */
-fun serviceExists(): Boolean = File(Paths.SERVICE).exists()
+/**
+ * 已废弃：模块就位判定已并入 [SysProbe.probe]（见 `Snapshot.svcState`）。
+ *
+ * 保留这个函数只是为了让老调用点不会因为「找不到符号」而编译失败，
+ * 但**新代码一律不要再调用它**，理由有两条：
+ *   1) 它自己起一次 su，而 probe 已经在同一次 root 调用里顺带读到了结果，
+ *      多开一个 root 请求既慢又容易触发安全机制的误判；
+ *   2) 两条判定路径并存时，一旦其中一条拿到空输出，页面之间就会出现
+ *      「核心在线但模块缺失」这种自相矛盾的显示。
+ *
+ * 正确用法（三态，谁都不许再把 null 当 false）：
+ * ```
+ * val svc = snapshot?.svcState ?: SysProbe.svcCache   // true / false / null
+ * ```
+ */
+@Deprecated(
+    message = "改用 SysProbe 的 Snapshot.svcState / SysProbe.svcCache",
+    replaceWith = ReplaceWith("SysProbe.svcCache"),
+    level = DeprecationLevel.WARNING
+)
+fun serviceExists(sh: RootShell? = null, cb: (Boolean?) -> Unit) {
+    val cmd = "if [ -f ${Paths.SERVICE} ]; then echo CG_SVC_YES; " +
+        "elif [ -d ${Paths.MODULE_DIR} ]; then echo CG_SVC_NODIR; " +
+        "else echo CG_SVC_NO; fi"
+    if (sh == null) {
+        cb(null)
+        return
+    }
+    sh.exec(cmd) { _, out, _ ->
+        val o = out
+        cb(
+            when {
+                o.contains("CG_SVC_YES") -> true
+                o.contains("CG_SVC_NODIR") -> false
+                o.contains("CG_SVC_NO") -> false
+                else -> null   // su 没输出，判不了 —— 绝不误报「缺失」
+            }
+        )
+    }
+}

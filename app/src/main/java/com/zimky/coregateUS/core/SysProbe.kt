@@ -11,6 +11,23 @@ import java.util.Locale
  */
 object SysProbe {
 
+    /**
+     * 模块就位状态的进程内缓存（最近一次 probe 的结果）。
+     *
+     * 存在的理由：设置页「运行环境」那几行是同步渲染的，等不了 root 回调。
+     * 之前这些行直接调 File(Paths.SERVICE).exists()，在 /data/adb 上恒为 false，
+     * 于是模块明明正常也报「缺失」。现在只认 probe 拿回来的真实结果，
+     * 没探测过就是 null，界面上显示「未知」而不是「缺失」。
+     */
+    @Volatile
+    var svcCache: Boolean? = null
+        private set
+
+    /** service.sh 的字节数（诊断用），0 表示没读到。 */
+    @Volatile
+    var svcSizeCache: Int = 0
+        private set
+
     /** 单个核心快照。 */
     data class Core(
         var id: Int = 0,
@@ -48,14 +65,22 @@ object SysProbe {
         /** root 是否可用（探针命令里 id -u 是否为 0） */
         var rootOk: Boolean = false,
         /** root 校验到的身份（uid=0(root) 之类），便于诊断 */
-        var rootId: String = ""
+        var rootId: String = "",
+        /**
+         * 模块是否就位：true 就位 / false 确实缺失 / null 无法判定。
+         *
+         * 由 probe 的同一次 root 调用顺带读出来（读 service.sh 的字节数），
+         * 这样「核心状态」和「模块是否刷入」永远来自同一次执行，
+         * 不会出现一个页面说在线、另一个页面说模块没刷入的自相矛盾。
+         */
+        var svcState: Boolean? = null
     )
 
     /** 一次 root 拿全量状态。 */
     fun probe(sh: RootShell, cb: (Snapshot) -> Unit) {
         val c = StringBuilder()
         // root 校验：id -u 是否为 0。放在最前面，任何一条后续失败都能先确认 root 本身是否可用。
-        c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
+c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
         c.append("echo \"ROOTID:\"; id 2>/dev/null; ")
         // 核心在线状态 0..7
         for (i in 0..7) {
@@ -104,6 +129,13 @@ object SysProbe {
         // 额外给一个冗余标记：把 pid 单独再输出一次，便于诊断区人类肉眼看
         c.append("echo \"DPID:\"; cat ").append(Paths.PID).append(" 2>/dev/null; ")
         c.append("echo \"STATEF:\"; cat ").append(Paths.STATE).append(" 2>/dev/null; ")
+        // 模块就位检查（以前这里是 File(Paths.SERVICE).exists()，因为 /data/adb 是
+        // 0700 root:root，普通 uid 恒判 false，直接导致「模块未刷入/损坏」的连锁误报）。
+        // 现在改成同一次 root 调用里顺带判定，只输出三类标记，解析端一一对应。
+        c.append("if [ -f ").append(Paths.SERVICE).append(" ]; then echo \"SVCYES:\"; ")
+        c.append("elif [ -d ").append(Paths.MODULE_DIR).append(" ]; then echo \"SVCNODIR:\"; ")
+        c.append("else echo \"SVCNONE:\"; fi; ")
+        c.append("echo \"SVCSIZE:\"; cat ").append(Paths.SERVICE).append(" 2>/dev/null | wc -c; ")
         c.append("echo \"ENDPROBE:\"")
 
         sh.exec(c.toString()) { code, out, _ ->
@@ -188,18 +220,55 @@ object SysProbe {
                 if (seg.isNotEmpty()) s.statePkg = seg[0]
             }
 
+            // 模块就位：三个标记谁出现就认谁。
+            // 都没出现（su 没输出/被截断）就保持 null = 未知，绝不写成「缺失」。
+            val sizeRaw = line(out, "SVCSIZE").orEmpty().trim()
+            val svcSize = sizeRaw.toIntOrNull() ?: 0
+            s.svcState = when {
+                out.contains("SVCYES:") && svcSize > 0 -> true
+                out.contains("SVCYES:") -> false          // 文件在但 0 字节 = 真损坏
+                out.contains("SVCNODIR:") -> false        // 目录在、service.sh 不在
+                out.contains("SVCNONE:") -> false         // 连模块目录都没有
+                else -> null
+            }
+            svcCache = s.svcState
+            if (s.svcState == true) svcSizeCache = svcSize
+
             cb(s)
         }
     }
 
-    /** 取 "TAG:" 标记后同一行剩余内容。 */
+    /**
+     * 取 "TAG:" 标记后面的值。
+     *
+     * ⚠️ 这里曾经只取「标记后到行尾」，是「核心全部离线」「诊断页报无 root」
+     * 「守护进程显示未运行」这一整串误报的真正根因。
+     *
+     * 原因：探测命令绝大多数是 `echo "ON0:"; cat .../online` 这种写法，
+     * 标记自己独占一行，**值在下一行**。旧实现 indexOf 之后 start 正好落在
+     * 那个换行符上，end 又等于 start，于是永远返回空串：
+     *   - ON1..7 取到 "" → online 判 false → 只剩 cpu0 在线，看着像全离线
+     *   - ROOTU 取到 "" → rootOk 判 false → 诊断页说「无 root」
+     * 只有 DAEMON 因为后来特意改成 echo -n 同行输出才侥幸正常。
+     *
+     * 现在两条路都支持：标记行后面**有内容就取内容，没内容就取下一行**。
+     * 这样不管是同行式（`echo -n "TAG:$V"`）还是换行式（`echo "TAG:"; echo $V`）
+     * 都能正确取值，也不用去改那三十多处 shell 拼接（改多了容易出新错）。
+     */
     private fun line(out: String, tag: String): String? {
         val i = out.indexOf("$tag:")
         if (i < 0) return null
         val start = i + tag.length + 1
         var end = out.indexOf('\n', start)
         if (end < 0) end = out.length
-        return out.substring(start, end).trim()
+        val same = out.substring(start, end).trim()
+        if (same.isNotEmpty()) return same
+        // 标记行是空的（值在下一行），继续往下取一行
+        if (end >= out.length) return ""
+        val nStart = end + 1
+        var nEnd = out.indexOf('\n', nStart)
+        if (nEnd < 0) nEnd = out.length
+        return out.substring(nStart, nEnd).trim()
     }
 
     private fun num(s: String?): Long {

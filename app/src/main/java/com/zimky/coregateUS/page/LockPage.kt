@@ -29,7 +29,6 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.ModuleBridge
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
-import com.zimky.coregateUS.core.serviceExists
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.CoreCell
 import com.zimky.coregateUS.ui.Gap
@@ -264,7 +263,12 @@ fun LockPage(
                     text = if (busy) "封锁中…" else "封锁高频核心",
                     onClick = {
                         if (busy) return@TextButton
-                        if (!serviceExists()) {
+                        // 只在「确认缺失」（探测结果为 false）时才拦截。
+                        // 注意不能用 !svcState：null 表示还没探测/无法判定，
+                        // 旧代码 `if (!serviceExists())` 因为 /data/adb 权限问题恒为 false，
+                        // 结果模块好好的也被拦下，报「请确认已正确安装」。
+                        val svc = snapshot?.svcState ?: SysProbe.svcCache
+                        if (svc == false) {
                             lockMsg = "未找到模块 service.sh，请确认 CoreGate 已正确安装并重启过。"
                             lockMsgColor = Semantic.ERR
                             return@TextButton

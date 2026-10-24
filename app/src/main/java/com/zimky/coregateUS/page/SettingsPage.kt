@@ -41,7 +41,6 @@ import com.zimky.coregateUS.core.LogReader
 import com.zimky.coregateUS.core.Paths
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
-import com.zimky.coregateUS.core.serviceExists
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.CardDivider
 import com.zimky.coregateUS.ui.Gap
@@ -148,9 +147,15 @@ fun SettingsPage(
                     }
                 }
 
-                if (!serviceExists()) {
+                // 模块就位状态一律来自 SysProbe 的同一次 root 探测结果：
+                // true 就位 / false 确实缺失 / null 还没探测过（不能当成缺失）
+                val svc = s?.svcState ?: SysProbe.svcCache
+                if (svc == false) {
                     Gap(10.dp)
                     HintText("未找到 ${Paths.SERVICE}，模块可能没刷入或已损坏。", color = Semantic.WARN)
+                } else if (svc == null) {
+                    Gap(10.dp)
+                    HintText("模块状态未探测（下拉刷新或稍候自动检测）", color = Semantic.WARN)
                 }
             }
         }
@@ -319,7 +324,15 @@ fun SettingsPage(
                 CardDivider()
 
                 // ① 运行环境
-                KeyValueRow("模块目录", if (serviceExists()) "已找到" else "缺失")
+                // 三态：已找到 / 缺失 / 未知（还没探测过），不再把「没探测」误报成「缺失」
+                KeyValueRow(
+                    "模块目录",
+                    when (s?.svcState ?: SysProbe.svcCache) {
+                        true -> "已找到"
+                        false -> "缺失"
+                        null -> "未知（未探测）"
+                    }
+                )
                 KeyValueRow("service.sh", Paths.SERVICE)
                 KeyValueRow("配置", Paths.FILE)
                 KeyValueRow("配置已读", if (cfg.loaded) "是" else "否（读取失败）")
