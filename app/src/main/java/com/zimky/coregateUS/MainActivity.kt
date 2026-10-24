@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,7 +47,7 @@ import com.zimky.coregateUS.ui.component.FloatingBottomBarItem
 import com.zimky.coregateUS.ui.theme.AppSettings
 import com.zimky.coregateUS.ui.theme.MiuixKernelSUTheme
 import kotlinx.coroutines.delay
-import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

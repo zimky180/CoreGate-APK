@@ -1,30 +1,22 @@
 package com.zimky.coregateUS.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -42,291 +33,38 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Compose 版色板与通用组件。
+ * 通用文本与间距组件。
  *
- * 色值一对一照搬旧 View 版 Ui.java（而 Ui.java 又是 WebUI :root 的原样搬运），
- * 因此 APK 与 webroot 页面观感继续一致。
- */
-object C {
-    val ACC = Color(0xFF4F8CFF)   // 主色
-    val OK = Color(0xFF34C759)    // 正常
-    val WARN = Color(0xFFFF9F0A)  // 注意
-    val ERR = Color(0xFFFF453A)   // 异常
-    val OFF = Color(0xFF5A6474)   // 关闭
-    val TXT = Color(0xFFEEF2F9)   // 正文
-    val SUB = Color(0xFF9AA5B8)   // 次要
-
-    val CARD_BG = Color(0x17FFFFFF)
-    val CARD_BORDER = Color(0x21FFFFFF)
-    val DIVIDER = Color(0x14FFFFFF)
-}
-
-/** 正文标题（17sp 粗体）。 */
-@Composable
-fun TitleText(text: String, color: Color = C.TXT, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        color = color,
-        fontSize = 17.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = modifier
-    )
-}
-
-/** 正文（14sp）。 */
-@Composable
-fun LabelText(text: String, color: Color = C.TXT, modifier: Modifier = Modifier) {
-    Text(text = text, color = color, fontSize = 14.sp, modifier = modifier)
-}
-
-/** 次级说明（12.5sp，行距略松）。 */
-@Composable
-fun SubText(text: String, color: Color = C.SUB, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        color = color,
-        fontSize = 12.5.sp,
-        lineHeight = 18.sp,
-        modifier = modifier
-    )
-}
-
-/** 小提示（11.5sp）。 */
-@Composable
-fun HintText(text: String, color: Color = C.SUB, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        color = color,
-        fontSize = 11.5.sp,
-        lineHeight = 16.sp,
-        modifier = modifier
-    )
-}
-
-/** 等宽小字，用于日志与诊断。 */
-@Composable
-fun MonoText(text: String, color: Color = C.SUB, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        color = color,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier = modifier
-    )
-}
-
-/**
- * 玻璃卡片。
+ * 视觉规范全部取自 Miuix 主题（[MiuixTheme.colorScheme]），不自建整套色板：
+ * 主色 primary、异常 error、正文 onSurface、次要 onSurfaceVariantSummary、分割线 outline。
  *
- * 视觉降级自 WebUI 的 backdrop-filter：半透明白底 + 1px 描边 + 20dp 圆角。
- * 标题与内容通过 [content] 自行排布，卡片只负责外观与间距。
+ * 唯一的例外是 [Semantic]：核心频率需要「低频绿 / 中频蓝 / 高频橙」这种与功耗语义绑定的
+ * 颜色，Miuix 主题色板里没有对应项，故保留五个固定值（且与 KernelSU 的强调色一致）。
  */
-@Composable
-fun GlassCard(
-    title: String?,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(C.CARD_BG)
-            .border(1.dp, C.CARD_BORDER, RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 15.dp)
-    ) {
-        if (title != null) {
-            TitleText(title)
-            Spacer(Modifier.height(12.dp))
-        }
-        content()
-    }
+
+/** 语义色：只保留频率/状态语义必需的几项，其余一律走 MiuixTheme.colorScheme。 */
+object Semantic {
+    /** 正常 / 低频省电 */
+    val OK = Color(0xFF34C759)
+
+    /** 强调 / 中频 / 全核在线 */
+    val ACC = Color(0xFF0A84FF)
+
+    /** 警告 / 高频大核（优先封锁对象） */
+    val WARN = Color(0xFFFF9F0A)
+
+    /** 错误 */
+    val ERR = Color(0xFFFF453A)
+
+    /** 离线 / 灰 */
+    val OFF = Color(0xFF8E8E93)
 }
 
-/** 卡片内分隔线。 */
-@Composable
-fun CardDivider(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp)
-            .height(1.dp)
-            .background(C.DIVIDER)
-    )
-}
-
-/**
- * 状态胶囊。
- *
- * [breathing] 为真时做透明度呼吸，用于「锁核中」这类持续态，
- * 让用户一眼看出状态是活的而不是静止文字。
- */
-@Composable
-fun StatusPill(
-    text: String,
-    color: Color,
-    breathing: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    val alpha = if (breathing) {
-        val transition = rememberInfiniteTransition(label = "pill")
-        val a by transition.animateFloat(
-            initialValue = 0.45f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1400),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "pillAlpha"
-        )
-        a
-    } else {
-        1f
-    }
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(color.copy(alpha = 0.16f))
-            .border(1.dp, color.copy(alpha = 0.5f), RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = text,
-            color = color,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.alpha(alpha)
-        )
-    }
-}
-
-/** 实心圆角主按钮。 */
-@Composable
-fun PrimaryButton(
-    text: String,
-    enabled: Boolean = true,
-    color: Color = C.ACC,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (enabled) color else color.copy(alpha = 0.45f))
-            .clickable(enabled = enabled) { onClick() }
-            .padding(vertical = 13.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = Color.White,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-/** 描边小按钮，用于「读取日志」「保存名单」这类次要动作。 */
-@Composable
-fun OutlineButton(
-    text: String,
-    color: Color = C.ACC,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(color.copy(alpha = 0.14f))
-            .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = color,
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-/** 「名称 —— 值」的横向行，名称列宽固定，保证多行对齐。 */
-@Composable
-fun KeyValueRow(
-    key: String,
-    value: String,
-    keyWidth: Dp = 86.dp,
-    valueColor: Color = C.TXT,
-    trailing: (@Composable () -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = key, color = C.SUB, fontSize = 14.sp, modifier = Modifier.width(keyWidth))
-        Text(
-            text = value,
-            color = valueColor,
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
-        )
-        if (trailing != null) trailing()
-    }
-}
-
-/** 一行左右布局：左侧标题+说明，右侧控件。 */
-@Composable
-fun SwitchRow(
-    title: String,
-    desc: String?,
-    trailing: @Composable () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            LabelText(title)
-            if (!desc.isNullOrEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                HintText(desc)
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        trailing()
-    }
-}
-
-/** 页面通用纵向排布：卡片之间 14dp。 */
-@Composable
-fun PageColumn(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        content = content
-    )
-}
-
-/** 底部留白，避免最后一张卡片贴住底栏。 */
-@Composable
-fun BottomSpacer() {
-    Spacer(Modifier.height(20.dp))
-}
-
-/**
- * 单个核心方块。
- *
- * 颜色语义与旧版 CoreGridView 一致：
- *   离线 = 灰 · 低频在线 = 绿 · 中频 = 蓝 · 高频大核 = 橙（优先封锁对象）
- */
+/** 单个核心方块，颜色由调用方按频率语义给出（离线 = 灰 · 低频绿 · 中频蓝 · 高频橙）。 */
 @Composable
 fun CoreCell(
     id: Int,
@@ -335,28 +73,28 @@ fun CoreCell(
     color: Color,
     modifier: Modifier = Modifier
 ) {
+    val cs = MiuixTheme.colorScheme
+    val cellBg = if (online) color.copy(alpha = 0.16f) else cs.surfaceContainerHigh
+    val cellBorder = if (online) color.copy(alpha = 0.45f) else cs.outline
+
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (online) color.copy(alpha = 0.16f) else Color(0x0DFFFFFF))
-            .border(
-                1.dp,
-                if (online) color.copy(alpha = 0.45f) else Color(0x14FFFFFF),
-                RoundedCornerShape(12.dp)
-            )
+            .background(cellBg)
+            .border(1.dp, cellBorder, RoundedCornerShape(12.dp))
             .padding(vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = "CPU$id",
-            color = if (online) C.TXT else C.OFF,
+            color = if (online) cs.onSurface else cs.onSurfaceVariantSummary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(3.dp))
         Text(
             text = freqText,
-            color = if (online) color else C.OFF,
+            color = if (online) color else cs.onSurfaceVariantSummary,
             fontSize = 10.sp
         )
     }
@@ -364,7 +102,7 @@ fun CoreCell(
 
 /** 1dp 细线（日志框、诊断区用）。 */
 @Composable
-fun HairLine(color: Color = C.DIVIDER, modifier: Modifier = Modifier) {
+fun HairLine(color: Color = MiuixTheme.colorScheme.outline, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxWidth().height(1.dp).background(color))
 }
 
@@ -380,21 +118,106 @@ fun HGap(w: Dp) {
     Spacer(Modifier.width(w))
 }
 
-/** 给外部用的尺寸常量，避免各页各写一套。 */
-object D {
-    val cell = 0.dp // 占位，核心网格用 weight 排布
-    val gap = 14.dp
-    val inner = 10.dp
+/** 底部留白，避免最后一张卡片贴住底栏。 */
+@Composable
+fun BottomSpacer() {
+    Spacer(Modifier.height(20.dp))
+}
+
+/** 等宽小字，用于日志与诊断。 */
+@Composable
+fun MonoText(
+    text: String,
+    color: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+        fontFamily = FontFamily.Monospace,
+        modifier = modifier
+    )
+}
+
+/** 次要说明文字，12sp。用于卡片内的解释段落。 */
+@Composable
+fun SubText(text: String, modifier: Modifier = Modifier, color: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary) {
+    Text(text = text, color = color, fontSize = 12.sp, lineHeight = 17.sp, modifier = modifier)
+}
+
+/** 更小一号的提示文字，11.5sp。用于参数范围、查找顺序这类脚注。 */
+@Composable
+fun HintText(text: String, modifier: Modifier = Modifier, color: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary) {
+    Text(text = text, color = color, fontSize = 11.5.sp, lineHeight = 16.sp, modifier = modifier)
+}
+
+/** 卡片内小标题，14sp 强调色。用于分区名。 */
+@Composable
+fun LabelText(text: String, modifier: Modifier = Modifier, color: Color = MiuixTheme.colorScheme.onSurface) {
+    Text(text = text, color = color, fontSize = 14.sp, modifier = modifier)
+}
+
+/** 卡片内分割线，两侧自带 10dp 留白。 */
+@Composable
+fun CardDivider() {
+    Gap(10.dp)
+    HairLine()
+    Gap(10.dp)
+}
+
+/** 一行「名称 / 数值」，数值右对齐，诊断与关于页用。 */
+@Composable
+fun KeyValueRow(name: String, value: String) {
+    val cs = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = name, color = cs.onSurfaceVariantSummary, fontSize = 12.5.sp)
+        Spacer(Modifier.width(12.dp))
+        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+            Text(text = value, color = cs.onSurface, fontSize = 12.5.sp)
+        }
+    }
+}
+
+/** 一行左右布局：左侧标题+说明，右侧控件。 */
+@Composable
+fun SwitchRow(
+    title: String,
+    desc: String?,
+    trailing: @Composable () -> Unit
+) {
+    val cs = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, color = cs.onSurface, fontSize = 15.sp)
+            if (!desc.isNullOrEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = desc,
+                    color = cs.onSurfaceVariantSummary,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        trailing()
+    }
 }
 
 /* ======================================================================
  * 轻提示（Compose 版 Toaster）
  *
- * 旧 View 版的 Toaster 是「new 一个实例、往 Activity 的 root 里塞 TextView」，
- * 在 Compose 里没有 root 可塞，改用「状态 + 顶层覆盖层」：
- *   - Toaster.show(msg) 只写一个 MutableState，任何地方都能调，不需要 context；
- *   - MainActivity 的根 Box 里放一个 ToastHost()，由它负责渲染胶囊与淡入淡出。
- * 观感与旧版一致：深底胶囊 + 顶部居中 + 1.8 秒后淡出。
+ * Toaster.show(msg) 只写一个 MutableState，任何地方都能调，不需要 context；
+ * MainActivity 的根 Box 里放一个 ToastHost()，由它负责渲染胶囊与淡入淡出。
+ * 观感：深底胶囊 + 顶部居中 + 1.8 秒后淡出。
  * ====================================================================== */
 
 /** 提示状态：文案 + 是否是错误提示 + 当前序号（同文案连点时也能重启计时）。 */
@@ -418,6 +241,7 @@ object Toaster {
  */
 @Composable
 fun ToastHost(modifier: Modifier = Modifier) {
+    val cs = MiuixTheme.colorScheme
     val state = toastState.value
     var visible by remember { mutableStateOf(false) }
     var shown by remember { mutableStateOf(ToastState()) }
@@ -448,14 +272,14 @@ fun ToastHost(modifier: Modifier = Modifier) {
         ) {
             Text(
                 text = shown.msg,
-                color = if (shown.isError) C.ERR else C.TXT,
+                color = if (shown.isError) cs.error else cs.onSurface,
                 fontSize = 13.sp,
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xF21A202B))
+                    .background(cs.surfaceContainerHighest)
                     .border(
                         width = 1.dp,
-                        color = if (shown.isError) Color(0x66FF453A) else Color(0x2EFFFFFF),
+                        color = if (shown.isError) cs.error.copy(alpha = 0.4f) else cs.outline,
                         shape = RoundedCornerShape(14.dp)
                     )
                     .padding(horizontal = 16.dp, vertical = 11.dp)
