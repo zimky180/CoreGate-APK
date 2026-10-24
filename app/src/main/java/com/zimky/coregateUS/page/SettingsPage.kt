@@ -321,7 +321,7 @@ fun SettingsPage(
                 KeyValueRow("模块目录", if (serviceExists()) "已找到" else "缺失")
                 KeyValueRow("service.sh", Paths.SERVICE)
                 KeyValueRow("配置", Paths.FILE)
-                KeyValueRow("配置已读", if (cfg.loaded) "是" else "否（可能未授权 root）")
+                KeyValueRow("配置已读", if (cfg.loaded) "是" else "否（读取失败）")
 
                 Gap(8.dp)
                 HairLine()

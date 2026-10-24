@@ -47,10 +47,25 @@ data class CoreConfig(
     /** 录屏 / 相机自动恢复 */
     var captureBoost: Boolean = false,
     /** 真机上确实读到了文件的标记，用于诊断页。 */
-    var loaded: Boolean = false
+    var loaded: Boolean = false,
+    /**
+     * 从磁盘读到的原始 JSON，用于「保留 App 不认识的键」。
+     *
+     * service.sh 会读 auto_lock_count（1~4，自动锁核个数），但 App 界面上没有这一项。
+     * 若保存时只输出自己认识的 7 个键，auto_lock_count 会被抹掉，
+     * service.sh 的 cfg_int 随即静默回退成默认值 1 —— 用户设过的数值就丢了。
+     * 所以 toJson() 先把 rawExtra 原样铺回，再覆盖自己管理的字段。
+     */
+    var rawExtra: Map<String, Any?>? = null
 ) {
-    /** 永远输出全部 7 个字段，绝不省略。 */
+    /** 永远输出全部 7 个 App 管理字段，并保留 App 不认识的其它键。 */
     fun toJson(): JSONObject = JSONObject().apply {
+        // 先铺回磁盘上原有的、App 不负责的键（如 auto_lock_count）
+        rawExtra?.forEach { (k, v) ->
+            if (k in MANAGED_KEYS) return@forEach
+            if (v == null) put(k, JSONObject.NULL) else put(k, v)
+        }
+        // 再覆盖 App 管理的字段
         put("enabled", enabled)
         put("lock_cores", lockCores.ifBlank { "auto" })
         put("disable_core_ctl", disableCoreCtl)
@@ -64,6 +79,28 @@ data class CoreConfig(
 
     companion object {
         fun defaults(): CoreConfig = CoreConfig()
+
+        /**
+         * 把 JSON 里所有键值抓成普通 Map 快照。
+         *
+         * JSONObject 的 opt* 只认识自己声明的类型，这里直接把原始对象存下来，
+         * 保存时再原样 put 回去，避免丢掉 auto_lock_count 这类 App 不管的键。
+         */
+        private fun snapshotUnknownKeys(o: JSONObject): Map<String, Any?> {
+            val m = LinkedHashMap<String, Any?>()
+            val it = o.keys()
+            while (it.hasNext()) {
+                val k = it.next()
+                m[k] = o.opt(k)
+            }
+            return m
+        }
+
+        /** App 自己负责写回的键，其余键一律原样保留。 */
+        private val MANAGED_KEYS = setOf(
+            "enabled", "lock_cores", "disable_core_ctl", "no_lock_charging",
+            "poll_interval", "limit_freq", "capture_boost"
+        )
 
         fun clampInterval(v: Int): Int = when {
             v < 5 -> 5
@@ -86,6 +123,8 @@ data class CoreConfig(
                 c.pollInterval = clampInterval(o.optInt("poll_interval", 30))
                 c.limitFreq = o.optBoolean("limit_freq", false)
                 c.captureBoost = o.optBoolean("capture_boost", false)
+                // 记住 App 不认识的键（auto_lock_count 等），保存时原样写回
+                c.rawExtra = snapshotUnknownKeys(o)
                 c.loaded = true
                 if (c.lockCores.isBlank()) c.lockCores = "auto"
                 return c
@@ -173,25 +212,32 @@ data class CoreConfig(
             sb.append("sync; echo OK")
             return sb.toString()
         }
-
         /**
          * 一次 root 调用取回 config.json + packages.txt。
          *
-         * 输出形如：
-         *   &lt;&lt;&lt;CFG&gt;&gt;&gt;
+         * 输出形如（分隔符为纯 ASCII 下划线标记，绝不含 shell 元字符）：
+         *   __CG_CFG__
          *   {...}
-         *   &lt;&lt;&lt;PKG&gt;&gt;&gt;
+         *   __CG_PKG__
          *   com.xxx
-         *   &lt;&lt;&lt;END&gt;&gt;&gt;
+         *   __CG_END__
          * 缺文件对应段为空，由调用方决定回退。
          */
+        const val SEP_CFG = "__CG_CFG__"
+        const val SEP_PKG = "__CG_PKG__"
+        const val SEP_END = "__CG_END__"
+
         fun load(sh: RootShell, cb: (cfg: CoreConfig, packagesRaw: String, dbg: String) -> Unit) {
+            // ⚠ 分隔符不能含 shell 元字符。旧写法 echo <<<CFG>>> 会被 sh 解析成
+            // here-string 重定向（等价于 echo CFG），输出里根本不会出现 <<<CFG>>>，
+            // 导致下面的 indexOf 全部为 -1、cfgRaw 恒为空、界面永远显示默认值。
+            // 现在改用纯下划线标记，且用单引号包裹保证原样输出。
             val cmd = buildString {
-                append("echo <<<CFG>>>; ")
+                append("echo '").append(SEP_CFG).append("'; ")
                 append("cat ").append(Paths.FILE).append(" 2>/dev/null; echo; ")
-                append("echo <<<PKG>>>; ")
+                append("echo '").append(SEP_PKG).append("'; ")
                 append("cat ").append(Paths.PACKAGES).append(" 2>/dev/null; echo; ")
-                append("echo <<<END>>>")
+                append("echo '").append(SEP_END).append("'")
             }
 
             sh.exec(cmd) { code, out, _ ->
@@ -200,17 +246,21 @@ data class CoreConfig(
                 var dbg = "exit=$code"
 
                 if (out.isNotEmpty()) {
-                    val a = out.indexOf("<<<CFG>>>")
-                    val b = out.indexOf("<<<PKG>>>")
-                    val c = out.indexOf("<<<END>>>")
+                    val a = out.indexOf(SEP_CFG)
+                    val b = out.indexOf(SEP_PKG)
+                    val c = out.indexOf(SEP_END)
                     if (a >= 0 && b > a) {
-                        cfgRaw = out.substring(a + 9, b).trim()
+                        cfgRaw = out.substring(a + SEP_CFG.length, b).trim()
                     }
                     if (b >= 0) {
                         val end = if (c > b) c else out.length
-                        pkgRaw = out.substring(b + 9, end).trim()
+                        pkgRaw = out.substring(b + SEP_PKG.length, end).trim()
                     }
-                    if (cfgRaw.isEmpty()) dbg += " · config.json 缺失或为空"
+                    if (cfgRaw.isEmpty()) {
+                        dbg += " · config.json 缺失或为空"
+                    } else if (!cfgRaw.trimStart().startsWith("{")) {
+                        dbg += " · config.json 内容异常"
+                    }
                 } else {
                     dbg += " · 无输出（root 未授权？）"
                 }

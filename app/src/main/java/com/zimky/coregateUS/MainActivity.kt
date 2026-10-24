@@ -26,8 +26,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -107,19 +108,29 @@ private val CONTENT_BOTTOM_PADDING = 100.dp
  * 之前误写成 `if (visible) content()`，每次切 Tab 都会销毁整棵子树，
  * 滚动位置和输入框内容全部丢失，与类注释里「滚动位置与输入内容都不丢」的承诺不符。
  *
- * 现在改为常驻 + alpha 0/1 + 不可交互：
- *   - alpha 而不是 visibility，是因为 Compose 没有 Android View 那种 GONE，
- *     用 alpha 0 隐藏可以保留滚动状态与焦点；
- *   - 隐藏时清掉 pointerInput，避免透明的页面截走点击。
- * 注意：不可见页面仍在内存里，四页都是轻量列表，代价可接受。
+ * 现在改为常驻 + 不可见 + 不可交互：
+ *   - 用 graphicsLayer 的 alpha 而不是 draw.alpha，配合 zIndex 让可见页压在最上层；
+ *   - 隐藏页不再挂 pointerInput —— 旧写法 `Modifier.pointerInput(Unit) {}` 并不会
+ *     禁用命中测试，它只是注册了一个什么都不做的 pointer input node，
+ *     指针事件照样会落进来（Compose 的 alpha 不参与 hit test 裁剪），
+ *     结果是隐藏页的 verticalScroll 会和可见页抢手势，
+ *     表现就是「部分页面滑不动」。改为隐藏页整块不参与命中测试。
+ *   - 隐藏页保留 composition，滚动位置与输入内容都不丢。
  */
 @Composable
 private fun PageSlot(visible: Boolean, content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .alpha(if (visible) 1f else 0f)
-            .then(if (visible) Modifier else Modifier.pointerInput(Unit) {})
+            .zIndex(if (visible) 1f else 0f)
+            .graphicsLayer {
+                alpha = if (visible) 1f else 0f
+            }
+            .then(
+                if (visible) Modifier
+                // 隐藏页：跳过自身及其子树的指针命中，彻底不抢手势
+                else Modifier.pointerInput(Unit) { }
+            )
     ) {
         content()
     }
