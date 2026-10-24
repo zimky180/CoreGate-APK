@@ -6,6 +6,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -26,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.ModuleBridge
@@ -37,6 +41,7 @@ import com.zimky.coregateUS.ui.Gap
 import com.zimky.coregateUS.ui.HairLine
 import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
+import com.zimky.coregateUS.ui.Toaster
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -45,28 +50,26 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 第 1 页：锁核运行状态 + 冻结与墓碑摘要 + 核心状态 + 锁核建议 + 手动封锁。
+ * 第 1 页：锁核运行状态 + 冻结摘要 + 核心状态 + 锁核建议。
  *
  * 行为契约与旧 LockPage.java 完全一致：
  *  - 状态一律由传入的 [snapshot] 单向推导，本页绝不主动发 root；
- *  - 唯一的写操作是「封锁高频核心」，且失败后不会自动重试，避免反复惊动安全机制。
+ *  - 核心开关与冻结入口都是用户显式点击，且失败后不会自动重试，避免反复惊动安全机制。
  *
- * 关于 [frozenCount] 与 [tombAlive]：这两个值由 MainActivity 的 probeFreeze() 统一探测后
+ * 关于 [frozenCount]：这个值由 MainActivity 的 probeFreeze() 统一探测后
  * 下传，本页只负责显示，绝不自己发命令 —— 否则每次切回首页都多一次 root，
  * 用户连续操作时容易被安全机制判为入侵。
  *
  * 三态语义（务必不要用 false 兜底 null）：
  *  - null      = 还没探到（首次进入或探测进行中）
- *  - 0 / false = 探到了，结果是「没有」
+ *  - 0         = 探到了，结果是「没有」
  * 两者在界面上必须显示成完全不同的文字，否则用户会把「不知道」当成「没有」。
  *
  * 视觉：卡片统一用 Miuix [Card] + [BasicComponent]，状态用 [Badge]，
  * 与 KernelSU 管理器首页保持同一套组件语言。
  *
  * @param frozenCount  本模块冻结中且系统确实已冻结的项数；null 表示尚未探明
- * @param tombAlive    本模块墓碑引擎当前是否真的冻住了至少一个进程；null 表示尚未探明
  * @param onOpenFreeze 跳转冻结管理二级页
- * @param onOpenTomb   跳转墓碑探测二级页
  */
 @Composable
 fun LockPage(
@@ -77,9 +80,7 @@ fun LockPage(
     onRefresh: () -> Unit,
     save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit,
     frozenCount: Int? = null,
-    tombAlive: Boolean? = null,
-    onOpenFreeze: () -> Unit = {},
-    onOpenTomb: () -> Unit = {}
+    onOpenFreeze: () -> Unit = {}
 ) {
     val cs = MiuixTheme.colorScheme
     val s = snapshot
@@ -90,9 +91,10 @@ fun LockPage(
     val bigOnline = s?.cores?.count { it.online && it.cluster == "big" } ?: 0
     val littleOnline = s?.cores?.count { it.online && it.cluster == "little" } ?: 0
 
+    // 正在执行的核操作：null = 空闲。存在时所有方块都不可点，防止并发。
     var busy by remember { mutableStateOf(false) }
-    var lockMsg by remember { mutableStateOf("") }
-    var lockMsgColor by remember { mutableStateOf(Semantic.ERR) }
+    // 待确认的核操作：点了方块先落这里，弹框确认后才真正发命令。
+    var pendingCore by remember { mutableStateOf<SysProbe.Core?>(null) }
 
     Column(
         modifier = Modifier
@@ -165,52 +167,7 @@ fun LockPage(
             }
         }
 
-        // ── 卡片二：墓碑状态（独立一框）───────────────────────────────
-        // 用户要求主页「一眼看见墓碑是不是真生效」，所以墓碑和冻结各自独占一个框，
-        // 不再挤在同一张卡里 —— 挤在一起时两行小字很容易被当成一段说明文字划过去。
-        // 数值全部只读，本页不做任何探测，数据来自 MainActivity.probeFreeze()。
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "墓碑",
-                        color = cs.onSurface,
-                        fontSize = 16.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    // 右上角徽标：没探到就不挂色，探到了才表态
-                    when (tombAlive) {
-                        null -> StateBadge("还没探到", cs.onSurfaceVariantSummary)
-                        true -> StateBadge("正在生效", Semantic.OK)
-                        false -> StateBadge("没有生效", cs.onSurfaceVariantSummary)
-                    }
-                }
-                Gap(8.dp)
-                Text(
-                    text = when (tombAlive) {
-                        null -> "正在读取墓碑状态，稍等一下"
-                        true -> "墓碑已冻住后台应用，正在生效"
-                        false -> "墓碑没冻住任何应用，等于没生效"
-                    },
-                    color = cs.onSurface,
-                    fontSize = 14.sp,
-                    lineHeight = 19.sp
-                )
-                Gap(10.dp)
-                HairLine()
-                Gap(10.dp)
-                TextButton(
-                    text = "查看墓碑探测",
-                    onClick = onOpenTomb,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        // ── 卡片三：冻结状态（独立一框）───────────────────────────────
+        // ── 卡片二：冻结状态（独立一框）───────────────────────────────
         // 数字取 FreezeData.Snapshot.scopedFrozenCount —— 「本模块作用域内、且系统里确实冻上了」
         // 的交集，不是「打算冻几个」。用户要看的是真冻没冻上，所以必须是前者。
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -264,7 +221,7 @@ fun LockPage(
             }
         }
 
-        // ── 卡片四：核心状态 ─────────────────────────────────────────
+        // ── 卡片三：核心状态 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text(
@@ -319,34 +276,10 @@ fun LockPage(
                                     color = col,
                                     modifier = Modifier.weight(1f),
                                     onClick = if (clickable) {
+                                        // 点方块只弹确认框，不直接写。封锁/解封会真的把核下线上线，
+                                        // 误触会让手机瞬间卡顿，所以必须二次确认。
                                         {
-                                            busy = true
-                                            lockMsg = ""
-                                            val action = if (core.online) {
-                                                { cb: (Boolean, String) -> Unit ->
-                                                    ModuleBridge.coreOff(sh, core.id, cb)
-                                                }
-                                            } else {
-                                                { cb: (Boolean, String) -> Unit ->
-                                                    ModuleBridge.coreOn(sh, core.id, cb)
-                                                }
-                                            }
-                                            action { ok, msg ->
-                                                busy = false
-                                                if (ok) {
-                                                    lockMsg = if (core.online) {
-                                                        "已封锁 cpu${core.id}，切到游戏时会自动恢复全部核心。"
-                                                    } else {
-                                                        "已解除 cpu${core.id} 的封锁。"
-                                                    }
-                                                    lockMsgColor = Semantic.OK
-                                                } else {
-                                                    lockMsg = msg
-                                                    lockMsgColor = Semantic.ERR
-                                                }
-                                                // 无论成败都重读真机状态：成功要看到变化，失败要看到「其实没变」
-                                                onRefresh()
-                                        }
+                                            pendingCore = core
                                         }
                                     } else null
                                 )
@@ -370,7 +303,7 @@ fun LockPage(
             }
         }
 
-        // ── 卡片五：锁核建议 ─────────────────────────────────────────
+        // ── 卡片四：锁核建议 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text(text = "锁核建议", color = cs.onSurface, fontSize = 16.sp)
@@ -412,63 +345,36 @@ fun LockPage(
             }
         }
 
-        // ── 卡片六：手动操作 ─────────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "手动操作", color = cs.onSurface, fontSize = 16.sp)
-                Gap(10.dp)
-                Text(
-                    text = "立即对当前在线的高频核心执行一次封锁。这是一次性动作，不会改变配置；" +
-                        "日常自动锁核仍由守护进程负责。",
-                    color = cs.onSurfaceVariantSummary,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp
-                )
-                Gap(14.dp)
-
-                TextButton(
-                    text = if (busy) "封锁中…" else "封锁高频核心",
-                    onClick = {
-                        if (busy) return@TextButton
-                        // 只在「确认缺失」（探测结果为 false）时才拦截。
-                        // 注意不能用 !svcState：null 表示还没探测/无法判定，
-                        // 旧代码 `if (!serviceExists())` 因为 /data/adb 权限问题恒为 false，
-                        // 结果模块好好的也被拦下，报「请确认已正确安装」。
-                        val svc = snapshot?.svcState ?: SysProbe.svcCache
-                        if (svc == false) {
-                            lockMsg = "未找到模块 service.sh，请确认 CoreGate 已正确安装并重启过。"
-                            lockMsgColor = Semantic.ERR
-                            return@TextButton
+        // ── 核心封锁/解封二次确认 ────────────────────────────────────
+        // 放在内容末尾、与卡片同级：用 fillMaxSize 遮罩盖住整页，不参与卡片排版。
+        pendingCore?.let { core ->
+            CoreConfirmDialog(
+                core = core,
+                onCancel = { pendingCore = null },
+                onConfirm = {
+                    pendingCore = null
+                    busy = true
+                    val target = core
+                    val action = if (target.online) {
+                        { cb: (Boolean, String) -> Unit -> ModuleBridge.coreOff(sh, target.id, cb) }
+                    } else {
+                        { cb: (Boolean, String) -> Unit -> ModuleBridge.coreOn(sh, target.id, cb) }
+                    }
+                    action { ok, msg ->
+                        busy = false
+                        if (ok) {
+                            Toaster.show(
+                                if (target.online) "已封锁 CPU${target.id}，切到游戏时会自动恢复全部核心。"
+                                else "已解除 CPU${target.id} 的封锁。"
+                            )
+                        } else {
+                            Toaster.show(msg, true)
                         }
-                        busy = true
-                        lockMsg = ""
-                        ModuleBridge.lockOnce(sh, -1) { ok, msg ->
-                            busy = false
-                            if (ok) {
-                                lockMsg = msg
-                                lockMsgColor = Semantic.OK
-                                onRefresh()
-                            } else {
-                                lockMsg = msg
-                                lockMsgColor = Semantic.ERR
-                            }
-                        }
-                    },
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-
-                if (lockMsg.isNotEmpty()) {
-                    Gap(10.dp)
-                    Text(
-                        text = lockMsg,
-                        color = lockMsgColor,
-                        fontSize = 11.5.sp,
-                        lineHeight = 16.sp
-                    )
+                        // 无论成败都重读真机状态：成功要看到变化，失败要看到「其实没变」
+                        onRefresh()
+                    }
                 }
-            }
+            )
         }
 
         BottomSpacer()
@@ -517,4 +423,83 @@ private fun coreColor(core: SysProbe.Core): Color {
     }
     val ratio = if (max > 0) core.curFreq.toFloat() / max.toFloat() else 0f
     return if (ratio < 0.5f) Semantic.OK else Semantic.ACC
+}
+
+/**
+ * 核心封锁 / 解封的二次确认弹窗。
+ *
+ * 为什么需要确认：
+ *   封锁核心是真正把 CPU 核下线的操作，误触会让手机瞬间卡顿甚至短暂掉帧；
+ *   解封同理会把已锁的核重新拉回在线、功耗立刻上去。两者都不该「点一下就发生」。
+ *
+ * 文案直白说明后果，不写技术术语（用户不关心 sysfs 路径）。
+ */
+@Composable
+private fun CoreConfirmDialog(
+    core: SysProbe.Core,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val cs = MiuixTheme.colorScheme
+    val locking = core.online
+    // 半透明遮罩盖住整页，拦截点击
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable(enabled = false) {},
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 26.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
+                Text(
+                    text = if (locking) "封锁 CPU${core.id}？" else "解封 CPU${core.id}？",
+                    color = cs.primary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = if (locking) {
+                        "封锁后这个核心会下线，功耗下降，但这个核心的算力暂时用不到。" +
+                            "进入游戏或录屏 / 相机时模块会自动恢复全部核心，重启也会还原。"
+                    } else {
+                        "解封后这个核心会重新上线，算力恢复，功耗也会跟着上去。"
+                    },
+                    color = cs.onSurfaceVariantSummary,
+                    fontSize = 12.5.sp,
+                    lineHeight = 19.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "当前频率 ${SysProbe.fmtMhz(core.curFreq)}",
+                    color = cs.onSurface,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        text = "取消",
+                        onClick = onCancel,
+                        colors = ButtonDefaults.textButtonColors(
+                            textColor = cs.onSurfaceVariantSummary
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        text = if (locking) "确认封锁" else "确认解封",
+                        onClick = onConfirm,
+                        colors = ButtonDefaults.textButtonColors(textColor = cs.primary)
+                    )
+                }
+            }
+        }
+    }
 }

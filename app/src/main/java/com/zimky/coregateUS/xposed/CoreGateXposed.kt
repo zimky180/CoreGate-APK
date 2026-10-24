@@ -33,10 +33,11 @@ import java.io.File
  *      该文件由 App 独占写（base64 原子写），Xposed 侧只读解析。
  *      半个字节都不写，所以不可能出现「模块把用户配置写坏」这种事。
  *
- * 【3】选内置档位时必须让 custom 为 null。
- *      effective() 的语义是 custom 优先于 profileId，若 App 切档时没清
- *      custom，这里就会继续用旧的 custom，表现成「切了没反应」。
- *      App 侧 persist() 已保证这一点，这里只做防御性处理。
+ * 【3】伪装只有 OPPO A5 一档，配置结构固定。
+ *      App 侧无条件写 {"enabled", "profile"{6 键}, "scope_packages"}，
+ *      硬件画像（SoC/主板/指纹/ABI/API level）由本侧 OPPO_A5_FULL 补齐。
+ *      用户在本模块能做的唯一操作就是打开开关，
+ *      真正生效范围由 LSPosed 里给本模块勾选的作用域决定，这里不再做机型选择。
  *
  * ═══════════════════════════════════════════════════════════════════
  * 为什么 hook 多条路径
@@ -68,6 +69,45 @@ class CoreGateXposed : XposedModule() {
 
         /** 配置缓存有效期：避免每次属性读取都碰文件 IO。 */
         private const val CACHE_TTL_MS = 1500L
+
+        /**
+         * 参与伪造的属性短名全表（"ro." + 短名 = 系统属性名）。
+         *
+         * 覆盖范围是按「能被拿来判定机型的读数」列的，不是随便凑数量：
+         *   · product.*  —— 机型/厂商/主板/市场名/ABI/首次 API，最常被读
+         *   · build.*    —— 编译指纹/版本/日期，风控必查，且与 product.* 有交叉校验关系
+         *   · soc.*      —— Android 12+ 的 SoC 标准属性，新一代 App 越来越爱读
+         *   · board.platform / hardware —— 主板平台与硬件平台，老牌检测手段
+         *
+         * 只读不写：这些名字仅用于「在 hook 里返回伪造值」，
+         * 系统属性本身一个字节都不改，进程退出即恢复。
+         */
+        private val PROP_KEYS = listOf(
+            "product.model",
+            "product.brand",
+            "product.device",
+            "product.manufacturer",
+            "product.name",
+            "product.board",
+            "product.marketname",
+            "product.cpu.abi",
+            "product.cpu.abilist",
+            "product.cpu.abilist32",
+            "product.first_api_level",
+            "build.product",
+            "build.id",
+            "build.display.id",
+            "build.type",
+            "build.tags",
+            "build.version.release",
+            "build.version.sdk",
+            "build.date.utc",
+            "build.fingerprint",
+            "board.platform",
+            "soc.manufacturer",
+            "soc.model",
+            "hardware"
+        )
     }
 
     // ── 运行时状态（每进程一份，volatile 保证 hook 线程可见）────────────
@@ -153,34 +193,55 @@ class CoreGateXposed : XposedModule() {
             return
         }
 
-        // 自定义优先，其次内置档位
-        val custom = obj(raw, "custom")
-        val base = custom ?: builtin(str(raw, "profile_id"))
-        if (base == null || base["model"].isNullOrBlank()) {
+        // 档案：App 侧 SpoofData.toJsonString() 固定写一个 "profile" 对象（6 个标识字段）。
+        // 字段不全，硬件画像由本侧的 OPPO_A5_FULL 补齐，详见该常量注释。
+        // 用局部非空变量承接，避免依赖编译器的智能转换（复合条件里的判空容易失效）
+        val prof = obj(raw, "profile")
+        if (prof == null) {
+            clearSpoof()
+            return
+        }
+        val base: Map<String, String> = prof
+        val modelOf = base["product.model"] ?: base["model"]
+        if (modelOf.isNullOrBlank()) {
             clearSpoof()
             return
         }
 
-        // 作用域：scope_only=true 时只对 scope_packages 里的包生效
-        if (bool(raw, "scope_only")) {
-            val list = arr(raw, "scope_packages")
-            if (pkg.isNullOrBlank() || list.none { it == pkg }) {
+        // 作用域：scope_packages 非空时按包名过滤，为空则不做包名过滤
+        // （实际生效范围由 LSPosed 作用域兜底，用户只勾抖音即可）
+        val scopeList = arr(raw, "scope_packages")
+        if (scopeList.isNotEmpty()) {
+            if (pkg.isNullOrBlank() || scopeList.none { it == pkg }) {
                 clearSpoof()
                 return
             }
         }
 
+        // 伪造表：norm 里出现什么键，就映射到同名系统属性。
+        // 键名即属性名去掉 "ro." 前缀后的短名（见 OPPO_A5_FULL 的注释）。
+        // norm = OPPO_A5_FULL 全量画像 ∪ App 下发的 6 个标识字段；
+        // App 侧用 model/brand/device/manufacturer/product_name 这套短键，
+        // 本侧用 product.model 这套长键，下面做一次归一化让两者同构。
+        val norm = HashMap<String, String>(OPPO_A5_FULL)
+        norm.putAll(base)
+        norm["model"]?.let { if (!norm.containsKey("product.model")) norm["product.model"] = it }
+        norm["brand"]?.let { if (!norm.containsKey("product.brand")) norm["product.brand"] = it }
+        norm["device"]?.let { if (!norm.containsKey("product.device")) norm["product.device"] = it }
+        norm["manufacturer"]?.let { if (!norm.containsKey("product.manufacturer")) norm["product.manufacturer"] = it }
+        norm["product_name"]?.let { if (!norm.containsKey("product.name")) norm["product.name"] = it }
+        norm["productName"]?.let { if (!norm.containsKey("product.name")) norm["product.name"] = it }
+
         val m = HashMap<String, String>()
-        m["ro.product.model"] = base["model"]!!
-        base["brand"]?.takeIf { it.isNotBlank() }?.let { m["ro.product.brand"] = it }
-        base["device"]?.takeIf { it.isNotBlank() }?.let { m["ro.product.device"] = it }
-        base["manufacturer"]?.takeIf { it.isNotBlank() }?.let { m["ro.product.manufacturer"] = it }
-        base["productName"]?.takeIf { it.isNotBlank() }?.let { m["ro.product.name"] = it }
-        if (bool(raw, "spoof_fingerprint")) {
-            base["fingerprint"]?.takeIf { it.isNotBlank() }?.let {
-                m["ro.build.fingerprint"] = it
-                m["ro.product.build.fingerprint"] = it
-            }
+        PROP_KEYS.forEach { short ->
+            norm[short]?.takeIf { it.isNotBlank() }?.let { m["ro." + short] = it }
+        }
+        // 机型必须落地，否则这套伪造等于没开
+        norm["product.model"]?.takeIf { it.isNotBlank() }?.let { m["ro.product.model"] = it }
+        if (m["ro.product.model"].isNullOrBlank()) {
+            log(Log.WARN, TAG, "配置里没有可用机型，跳过伪造")
+            clearSpoof()
+            return
         }
         spoof = m
         active = true
@@ -192,34 +253,53 @@ class CoreGateXposed : XposedModule() {
         active = false
     }
 
-    /** 内置三档；id 必须与 App 侧 SpoofData.BUILTIN 完全一致。 */
-    private fun builtin(id: String?): Map<String, String>? = when (id) {
-        "apple_17_pm" -> mapOf(
-            "model" to "iPhone 17 Pro Max",
-            "brand" to "Apple",
-            "device" to "iPhone18,2",
-            "manufacturer" to "Apple",
-            "productName" to "iPhone17,2",
-            "fingerprint" to ""
-        )
-        "oneplus_16" -> mapOf(
-            "model" to "PJZ110",
-            "brand" to "OnePlus",
-            "device" to "OP6110L1",
-            "manufacturer" to "OnePlus",
-            "productName" to "PJZ110",
-            "fingerprint" to "OnePlus/PJZ110/OP6110L1:16/BP2A.250605.031.A3/1:user/release-keys"
-        )
-        "oppo_a5" -> mapOf(
-            "model" to "PKD110",
-            "brand" to "OPPO",
-            "device" to "OP5B4B",
-            "manufacturer" to "OPPO",
-            "productName" to "PKD110",
-            "fingerprint" to "OPPO/PKD110/OP5B4B:14/UP1A.231005.007/1:user/release-keys"
-        )
-        else -> null
-    }
+    /**
+     * OPPO A5（PKD110）完整画像：只有这一档，不再做机型库。
+     *
+     * ══════════════════════════════════════════════════════════════
+     * 为什么 App 只传 6 个字段，这里却要留一整张表
+     * ──────────────────────────────────────────────────────────────
+     * 「伪造机型」最容易被识破的方式不是 model 不对，而是**【内部自相矛盾】**：
+     *   model 说自己是 OPPO A5（联发科 MT6835 的千元机），
+     *   但 ro.soc.model 还是 SM8845、ro.board.platform 还是 canoe——
+     *   任何一家风控只要交叉比对两项就露馅，比干脆不伪造还糟。
+     *
+     * 所以真实可用的伪造必须是一整套自洽的画像：SoC、主板代号、ABI、
+     * 编译指纹、API level、厂商定制版本全部对得上。
+     * 这份表就放在 Xposed 侧（注入进程内），App 只需传 6 个标识字段，
+     * 剩下的硬件画像由这里补齐并覆盖。
+     *
+     * 键名规则：短名，前面加 "ro." 就是系统属性名。
+     *   例 "product.model" -> ro.product.model
+     *   例 "build.fingerprint" -> ro.build.fingerprint
+     * ══════════════════════════════════════════════════════════════
+     */
+    private val OPPO_A5_FULL: Map<String, String> = mapOf(
+        "product.model" to "PKD110",
+        "product.brand" to "OPPO",
+        "product.device" to "OP5B4B",
+        "product.manufacturer" to "OPPO",
+        "product.name" to "PKD110",
+        "product.board" to "mt6835",
+        "product.marketname" to "OPPO A5",
+        "product.cpu.abi" to "arm64-v8a",
+        "product.cpu.abilist" to "arm64-v8a,armeabi-v7a,armeabi",
+        "product.cpu.abilist32" to "armeabi-v7a,armeabi",
+        "product.first_api_level" to "33",
+        "build.product" to "PKD110",
+        "build.id" to "UP1A.231005.007",
+        "build.display.id" to "PKD110_14.0.1.300(CN01)",
+        "build.type" to "user",
+        "build.tags" to "release-keys",
+        "build.version.release" to "14",
+        "build.version.sdk" to "34",
+        "build.date.utc" to "1730000000",
+        "build.fingerprint" to "OPPO/PKD110/OP5B4B:14/UP1A.231005.007/1:user/release-keys",
+        "board.platform" to "mt6835",
+        "soc.manufacturer" to "MediaTek",
+        "soc.model" to "MT6835",
+        "hardware" to "mt6835"
+    )
 
     // ── Hook 一：SystemProperties 读取入口 ─────────────────────────
 
@@ -237,8 +317,8 @@ class CoreGateXposed : XposedModule() {
         hookGetter(cls, "get", 2, String::class.java, String::class.java)
         // 数字/布尔读取：机型字段用不到，但游戏偶尔拿 getInt 探 SDK，
         // 这里同样透传伪造值，伪造值非数字时回退原样，不抛异常。
-        hookIntLong(cls, "getInt")
-        hookIntLong(cls, "getLong")
+        hookInt(cls, "getInt", Int::class.javaPrimitiveType!!)
+        hookLong(cls, "getLong", java.lang.Long.TYPE)
         hookBool(cls, "getBoolean")
     }
 
@@ -272,13 +352,35 @@ class CoreGateXposed : XposedModule() {
         }
     }
 
-    private fun hookIntLong(cls: Class<*>, name: String) {
+    /**
+     * getInt(String, int) 的 hook。
+     * 返回类型必须严格是 Integer：框架按方法声明返回 int，塞 Long 会抛
+     * ClassCastException 到调用方，比不 hook 更糟。伪造值不是数字时原样透传。
+     */
+    private fun hookInt(cls: Class<*>, name: String, defType: Class<*>) {
         try {
-            val m = cls.getDeclaredMethod(name, String::class.java, Int::class.javaPrimitiveType)
+            val m = cls.getDeclaredMethod(name, String::class.java, defType)
             m.isAccessible = true
             hook(m).intercept { chain ->
-                val hit = spoofValue(chain.getArg(0) as? String)
-                val n = hit?.toIntOrNull()
+                val n = spoofValue(chain.getArg(0) as? String)?.toIntOrNull()
+                if (n != null) n else chain.proceed()
+            }
+        } catch (t: Throwable) {
+            log(Log.WARN, TAG, "hook " + name + " 失败: " + t.message)
+        }
+    }
+
+    /**
+     * getLong(String, long) 的 hook。
+     * 单独一个函数的原因：第二个参数是 long 而不是 int，
+     * 且返回值必须装箱成 java.lang.Long，不能复用 getInt 的实现。
+     */
+    private fun hookLong(cls: Class<*>, name: String, defType: Class<*>) {
+        try {
+            val m = cls.getDeclaredMethod(name, String::class.java, defType)
+            m.isAccessible = true
+            hook(m).intercept { chain ->
+                val n = spoofValue(chain.getArg(0) as? String)?.toLongOrNull()
                 if (n != null) n else chain.proceed()
             }
         } catch (t: Throwable) {
@@ -311,12 +413,35 @@ class CoreGateXposed : XposedModule() {
      */
     private fun hookBuildFields() {
         val s = spoof ?: return
+        // 与 SystemProperties 那条 hook 一一对应。少改一个字段，
+        // 就会出现「SystemProperties.get 返回 A、Build.XXX 返回 B」的自相矛盾，
+        // 比完全不改更容易被判定为作弊，所以这里必须同表同源。
         setStatic("MODEL", s["ro.product.model"])
         setStatic("BRAND", s["ro.product.brand"])
         setStatic("DEVICE", s["ro.product.device"])
         setStatic("MANUFACTURER", s["ro.product.manufacturer"])
         setStatic("PRODUCT", s["ro.product.name"])
+        setStatic("BOARD", s["ro.product.board"])
+        // Build.HARDWARE 读的是 ro.hardware
+        setStatic("HARDWARE", s["ro.hardware"])
         setStatic("FINGERPRINT", s["ro.build.fingerprint"])
+        // Build.ID / DISPLAY / TYPE / TAGS：编译标识，风控交叉校验必查
+        setStatic("ID", s["ro.build.id"])
+        setStatic("DISPLAY", s["ro.build.display.id"])
+        setStatic("TYPE", s["ro.build.type"])
+        setStatic("TAGS", s["ro.build.tags"])
+        // Build.PRODUCT 已在上面随 ro.product.name 一并写入，此处不再重复
+        // Android 12+ 新增的 SoC 字段，读的是 ro.soc.*
+        // 用「伪造后的 SDK」判断字段是否存在，而不是读运行时 Build.VERSION.SDK_INT：
+        // 一旦将来补上 SDK_INT 的改写，运行时读取会受自己干扰。
+        val fkSdk = s["ro.build.version.sdk"]?.toIntOrNull() ?: Build.VERSION.SDK_INT
+        if (fkSdk >= 31) {
+            setStatic("SOC_MANUFACTURER", s["ro.soc.manufacturer"])
+            setStatic("SOC_MODEL", s["ro.soc.model"])
+        }
+        // CPU_ABI 是 String 而非数组，能直接改；SUPPORTED_ABIS 是 String[]
+        // 数组类型无法用 f.set 换成 String，故只改单值 ABI 字段。
+        setStatic("CPU_ABI", s["ro.product.cpu.abi"])
     }
 
     private fun setStatic(field: String, value: String?) {
@@ -392,9 +517,17 @@ class CoreGateXposed : XposedModule() {
         if (k >= raw.length) return null
         val body = raw.substring(open + 1, k)
         val m = HashMap<String, String>()
-        listOf("id", "title", "subtitle", "brand", "model", "device", "manufacturer", "productName", "fingerprint", "buildModel")
-            .forEach { f -> scalars(body, f)?.let { m[f] = it } }
-        return if (m["model"].isNullOrBlank()) null else m
+        // 白名单必须与 SpoofProfile 的字段保持一致：
+        // 少列一个键，解析出来的表就少一项，伪造就缺一块。
+        listOf(
+            "brand", "model", "device", "manufacturer",
+            "product_name", "productName", "build_model", "buildModel"
+        ).forEach { f -> scalars(body, f)?.let { m[f] = it } }
+        // 兼容旧配置里可能存在的 productName 驼峰键
+        if (!m.containsKey("product_name") && m.containsKey("productName")) {
+            m["product_name"] = m["productName"]!!
+        }
+        return if ((m["model"] ?: m["productName"]).isNullOrBlank()) null else m
     }
 
     private fun arr(raw: String, key: String): List<String> {

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,11 +74,8 @@ fun PolicyPage(
     save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit,
     /** 冻结管理二级页里的「已冻结」数量快照，null 表示还没读到 */
     frozenCount: Int?,
-    /** 墓碑是否真的在生效，null 表示还没探测出来 */
-    tombAlive: Boolean?,
     onOpenFreeze: () -> Unit,
-    onOpenSpoof: () -> Unit,
-    onOpenTomb: () -> Unit
+    onOpenSpoof: () -> Unit
 ) {
     val cs = MiuixTheme.colorScheme
     val s = snapshot
@@ -94,13 +92,6 @@ fun PolicyPage(
         frozenCount == 0 -> "当前没有冻结任何服务"
         else -> "已冻结 $frozenCount 个服务"
     }
-    // 墓碑摘要：同上，与主页卡片二对齐
-    val tombSummary = when (tombAlive) {
-        null -> "还没探到"
-        true -> "已冻住后台应用，正在生效"
-        false -> "没冻住任何应用，等于没生效"
-    }
-
     // 输入框文本与焦点状态
     var intervalText by remember { mutableStateOf(cfg.pollInterval.toString()) }
     var inputFocused by remember { mutableStateOf(false) }
@@ -119,6 +110,8 @@ fun PolicyPage(
             // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
+            // 白底：不依赖主题色，保证四页观感一致
+            .background(Color.White)
             .verticalScroll(rememberScrollState())
             .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -285,15 +278,10 @@ fun PolicyPage(
                     summary = "让游戏以为这是别的手机",
                     onClick = onOpenSpoof
                 )
-                HairLine()
-                NavRow(
-                    title = "墓碑",
-                    summary = tombSummary,
-                    onClick = onOpenTomb
-                )
+
 
                 Gap(10.dp)
-                HintText("以上三项都默认关闭，改之前请先看清各自页面的说明。")
+                HintText("以上两项都默认关闭，改之前请先看清各自页面的说明。")
             }
         }
 

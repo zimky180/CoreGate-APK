@@ -70,25 +70,33 @@ fun FreezePage(
 ) {
     val cs = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
-
     var snap by remember { mutableStateOf(FreezeData.Snapshot()) }
     var loading by remember { mutableStateOf(true) }
+    // 正在处理的包（防重复点击，等引擎真正返回后清空）
+    var busyPkg by remember { mutableStateOf<String?>(null) }
+
 
     // 待确认的高风险组（非空时弹出确认框）
     var pendingRiskyKey by remember { mutableStateOf<String?>(null) }
 
     // 读取真实冻结状态。这个函数会被多处调用（进页、操作后、手动刷新）。
-    fun reload() {
+    //
+    // 【为什么改成回调驱动】(v2.2.1)
+    //   旧实现是 exec 回调里给 out 赋值，然后 delay(350) 后直接读 out。
+    //   RootShell.exec 是异步回调，su + pm list + dumpsys 在 ColorOS 16 上
+    //   经常要 300~900ms，350ms 时回调多半还没到 —— 读到的是空串，
+    //   于是 snap 被解析成「全部未冻结」，界面看上去就是「点了没反应」。
+    //   现在改成：回调里解析 + 更新状态，不再靠 sleep 猜时间。
+    fun reload(onDone: (() -> Unit)? = null) {
         scope.launch {
             loading = true
-            var out = ""
             sh.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { _, o, _ ->
-                out = o
+                scope.launch {
+                    snap = FreezeData.parse(o)
+                    loading = false
+                    onDone?.invoke()
+                }
             }
-            // exec 是异步回调，给它一点时间落地；再解析
-            delay(350)
-            snap = FreezeData.parse(out)
-            loading = false
         }
     }
 
@@ -96,14 +104,34 @@ fun FreezePage(
 
     // 单包冻结 / 解冻：直接调引擎的 --freeze-add / --freeze-del，不靠改 config
     // 因为单包选择不等于整组开关，两者语义必须分开。
+    //
+    // 【为什么不在这里提示「已请求冻结」】(v2.2.1)
+    //   旧版是先弹 Toaster 再 reload，无论引擎成功还是失败都提示「已请求冻结」，
+    //   用户看到提示却看不到开关变化，就成了「按钮点不动」的错觉。
+    //   现在改成：等引擎真正返回，按输出里的 OK / FAIL 决定提示内容。
     fun applyPkg(pkg: String, freeze: Boolean) {
+        if (busyPkg == pkg) return
+        busyPkg = pkg
         scope.launch {
             val arg = if (freeze) "--freeze-add" else "--freeze-del"
-            sh.exec("sh /data/adb/modules/CoreGate/service.sh $arg $pkg") { _, _, _ -> }
-            delay(200)
-            Toaster.show(if (freeze) "已请求冻结 $pkg" else "已请求解冻 $pkg")
-            reload()
-            onChanged()
+            sh.exec("sh /data/adb/modules/CoreGate/service.sh $arg $pkg") { _, o, _ ->
+                scope.launch {
+                    val ok = o.contains("_OK")
+                    // 引擎成功后立刻回读真实状态，按钮显示以实际状态为准
+                    reload {
+                        busyPkg = null
+                        Toaster.show(
+                            when {
+                                !ok -> if (freeze) "冻结失败：$pkg" else "解冻失败：$pkg"
+                                freeze -> "已冻结 $pkg"
+                                else -> "已解冻 $pkg"
+                            },
+                            !ok
+                        )
+                        onChanged()
+                    }
+                }
+            }
         }
     }
 
@@ -199,14 +227,11 @@ fun FreezePage(
                     if (wantOn && g.risky) {
                         pendingRiskyKey = g.key
                     } else {
-                        scope.launch {
-                            val v = if (wantOn) "true" else "false"
-                            sh.exec(
-                                "sh /data/adb/modules/CoreGate/service.sh --set-freeze ${g.key} $v"
-                            ) { _, _, _ -> }
-                            delay(200)
-                            reload()
-                            onChanged()
+                        // 等 --set-freeze 真正返回再回读，不靠 delay 猜时间
+                        sh.exec(
+                            "sh /data/adb/modules/CoreGate/service.sh --set-freeze ${g.key} ${if (wantOn) "true" else "false"}"
+                        ) { _, _, _ ->
+                            scope.launch { reload { onChanged() } }
                         }
                     }
                 },
@@ -225,13 +250,10 @@ fun FreezePage(
             onCancel = { pendingRiskyKey = null },
             onConfirm = {
                 pendingRiskyKey = null
-                scope.launch {
-                    sh.exec(
-                        "sh /data/adb/modules/CoreGate/service.sh --set-freeze $key true"
-                    ) { _, _, _ -> }
-                    delay(200)
-                    reload()
-                    onChanged()
+                sh.exec(
+                    "sh /data/adb/modules/CoreGate/service.sh --set-freeze $key true"
+                ) { _, _, _ ->
+                    scope.launch { reload { onChanged() } }
                 }
             }
         )

@@ -49,14 +49,12 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.FreezeData
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
-import com.zimky.coregateUS.core.TombData
 import com.zimky.coregateUS.page.FreqPage
 import com.zimky.coregateUS.page.FreezePage
 import com.zimky.coregateUS.page.LockPage
 import com.zimky.coregateUS.page.PolicyPage
 import com.zimky.coregateUS.page.SettingsPage
 import com.zimky.coregateUS.page.SpoofPage
-import com.zimky.coregateUS.page.TombPage
 import com.zimky.coregateUS.ui.ToastHost
 import com.zimky.coregateUS.ui.component.RootGate
 import com.zimky.coregateUS.ui.component.FloatingBottomBar
@@ -110,7 +108,6 @@ private object SubPage {
     const val NONE = ""
     const val FREEZE = "freeze"
     const val SPOOF = "spoof"
-    const val TOMB = "tomb"
 }
 
 /** 底栏四栏文案。 */
@@ -205,10 +202,9 @@ private fun AppRoot() {
     // 当前展开的二级页；SubPage.NONE 表示停在四栏主界面
     var subPage by rememberSaveable { mutableStateOf(SubPage.NONE) }
 
-    // 策略页要显示的「冻结了多少个」与「墓碑在不在」，由二级页与后台探测回报。
+    // 策略页要显示的「冻结了多少个」，由二级页与后台探测回报。
     // null = 还没探到（主页与策略页都会显示「还没探到」），0 是有效结果，不能和 null 混。
     var frozenCount by remember { mutableStateOf<Int?>(null) }
-    var tombAlive by remember { mutableStateOf<Boolean?>(null) }
 
     // 刷新：串行 + 合并
     var refreshing by remember { mutableStateOf(false) }
@@ -265,13 +261,9 @@ private fun AppRoot() {
     }
 
     /**
-     * 探一次冻结与墓碑的实况，喂给策略页的摘要。
+     * 探一次冻结实况，喂给策略页的摘要。
      *
-     * 跑两条命令：`--freeze-status` 给冻结页的计数，`--tomb-status` 给墓碑是否真在生效。
-     * 合并成一次调用，避免「一次刷新 = 多次 root」被判为入侵。
-     *
-     * tombAlive 的语义已经改了：以前是「有别的工具在冻后台」，现在墓碑由本模块自己做，
-     * 所以它等于「本模块引擎当前真的冻住了至少一个进程」。开着但一个没冻住，仍算没生效。
+     * 跑一条命令：`--freeze-status` 给冻结页的计数。
      *
      * 为什么不在 refresh() 里做：refresh 走的是 SysProbe，它读的是 sysfs 与
      * /data 下的状态文件，实现上完全独立；把冻结状态塞进同一个回调会让
@@ -287,13 +279,6 @@ private fun AppRoot() {
                 if (snap.applied.isNotEmpty() || snap.actual.isNotEmpty()) {
                     frozenCount = snap.scopedFrozenCount
                 }
-            }, 350L)
-        }
-        RootShell.exec("sh /data/adb/modules/CoreGate/service.sh --tomb-status") { _, out, _ ->
-            main.postDelayed({
-                val t = TombData.parse(out)
-                // 读不到（授权被拒 / 模块没装）时保持原值，不伪造 false
-                if (t.on != null) tombAlive = t.effective
             }, 350L)
         }
     }
@@ -434,7 +419,7 @@ private fun AppRoot() {
                     .statusBarsPadding()
             ) {
                 PageSlot(visible = currentTab == 0) {
-                    // 冻结与墓碑摘要由 probeFreeze() 统一探测后下传，LockPage 自己不发 root。
+                    // 冻结摘要由 probeFreeze() 统一探测后下传，LockPage 自己不发 root。
                     // 入口和策略页指向同一批二级页，用户在哪一栏都能进。
                     LockPage(
                         cfg = cfg,
@@ -444,9 +429,7 @@ private fun AppRoot() {
                         onRefresh = { refresh(true) },
                         save = ::save,
                         frozenCount = frozenCount,
-                        tombAlive = tombAlive,
-                        onOpenFreeze = { subPage = SubPage.FREEZE },
-                        onOpenTomb = { subPage = SubPage.TOMB }
+                        onOpenFreeze = { subPage = SubPage.FREEZE }
                     )
                 }
                 PageSlot(visible = currentTab == 1) {
@@ -458,10 +441,8 @@ private fun AppRoot() {
                         onRefresh = { refresh(true) },
                         save = ::save,
                         frozenCount = frozenCount,
-                        tombAlive = tombAlive,
                         onOpenFreeze = { subPage = SubPage.FREEZE },
-                        onOpenSpoof = { subPage = SubPage.SPOOF },
-                        onOpenTomb = { subPage = SubPage.TOMB }
+                        onOpenSpoof = { subPage = SubPage.SPOOF }
                     )
                 }
                 PageSlot(visible = currentTab == 2) {
@@ -507,14 +488,6 @@ private fun AppRoot() {
                                 sh = RootShell,
                                 onBack = { subPage = SubPage.NONE },
                                 onChanged = { refresh(true) }
-                            )
-                            // 墓碑页：页内自己读 --tomb-status，任何改动后通过 onChanged
-                            // 通知外层刷一次快照与冻结/墓碑实况，这样返回策略页时
-                            // 摘要会立刻跟着变。
-                            SubPage.TOMB -> TombPage(
-                                sh = RootShell,
-                                onBack = { subPage = SubPage.NONE },
-                                onChanged = { refresh(true); probeFreeze() }
                             )
                         }
                     }
