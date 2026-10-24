@@ -36,7 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.input.pointer.awaitPointerEventScope
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
@@ -180,13 +180,15 @@ private fun PageSlot(visible: Boolean, content: @Composable () -> Unit) {
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            down.consume()
-                            // 一直吃到这一指抬起为止
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                event.changes.forEach { it.consume() }
-                                if (event.changes.all { it.changedToUpIgnoreConsumed() }) break
+                            awaitPointerEventScope {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                down.consume()
+                                // 一直吃到这一指抬起为止
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    event.changes.forEach { it.consume() }
+                                    if (event.changes.all { it.changedToUpIgnoreConsumed() }) break
+                                }
                             }
                         }
                     }

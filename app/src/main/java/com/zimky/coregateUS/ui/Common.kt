@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalIndication
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,8 +101,8 @@ fun CoreCell(
             .then(
                 if (onClick != null) {
                     Modifier.clickable(
-                        // 沿用当前主题的涟漪，避免引入一套自绘反馈
-                        indication = LocalIndication.current,
+                        // 直接用 material3 ripple：LocalIndication 已被新版 Compose 移除
+                        indication = ripple(),
                         interactionSource = remember { MutableInteractionSource() }
                     ) { onClick() }
                 } else Modifier

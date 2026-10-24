@@ -106,7 +106,7 @@ fun SpoofPage(
     suspend fun reload() {
         loading = true
         val raw = readRaw(sh, "cat " + SpoofData.State.FILE + " 2>/dev/null")
-        st = SpoofData.parse(raw)
+        st = SpoofData.State.parse(raw)
         realModel = readProp(sh, "ro.product.model")
         realBrand = readProp(sh, "ro.product.brand")
         realDevice = readProp(sh, "ro.product.device")
@@ -121,7 +121,7 @@ fun SpoofPage(
         if (busy) return
         busy = true
         scope.launch {
-            val out = readRaw(sh, SpoofData.buildSaveCmd(next))
+            val out = readRaw(sh, SpoofData.State.buildSaveCmd(next))
             if (out.contains("OK")) {
                 st = next
                 Toaster.show(hint)
