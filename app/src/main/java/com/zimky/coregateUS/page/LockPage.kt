@@ -34,6 +34,7 @@ import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.CoreCell
 import com.zimky.coregateUS.ui.Gap
 import com.zimky.coregateUS.ui.HairLine
+import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -78,7 +79,7 @@ fun LockPage(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
 

@@ -32,6 +32,7 @@ import com.zimky.coregateUS.ui.CardDivider
 import com.zimky.coregateUS.ui.Gap
 import com.zimky.coregateUS.ui.HintText
 import com.zimky.coregateUS.ui.LabelText
+import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
 import com.zimky.coregateUS.ui.SubText
 import com.zimky.coregateUS.ui.SwitchRow
@@ -86,7 +87,7 @@ fun FreqPage(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
 

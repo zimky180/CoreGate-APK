@@ -44,12 +44,19 @@ object SysProbe {
         var littleMaxCur: Long = 0,
         /** policy6 scaling_max_freq */
         var bigMaxCur: Long = 0,
-        var dbg: String = ""
+        var dbg: String = "",
+        /** root 是否可用（探针命令里 id -u 是否为 0） */
+        var rootOk: Boolean = false,
+        /** root 校验到的身份（uid=0(root) 之类），便于诊断 */
+        var rootId: String = ""
     )
 
     /** 一次 root 拿全量状态。 */
     fun probe(sh: RootShell, cb: (Snapshot) -> Unit) {
         val c = StringBuilder()
+        // root 校验：id -u 是否为 0。放在最前面，任何一条后续失败都能先确认 root 本身是否可用。
+        c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
+        c.append("echo \"ROOTID:\"; id 2>/dev/null; ")
         // 核心在线状态 0..7
         for (i in 0..7) {
             c.append("echo \"ON").append(i).append(":\"; cat /sys/devices/system/cpu/cpu")
@@ -78,7 +85,7 @@ object SysProbe {
         c.append("echo \"STATEB:\"; ")
         // 注意：shell 变量 $PID 必须转义成 ${'$'}PID，否则 Kotlin 会把它当成字符串模板，
         // 报 Unresolved reference 'PID'。
-        c.append("PID=$(cat ").append(Paths.PID).append(" 2>/dev/null); ")
+        c.append("PID=").append("${'$'}").append("(cat ").append(Paths.PID).append(" 2>/dev/null); ")
         c.append("if [ -n \"${'$'}PID\" ] && kill -0 \"${'$'}PID\" 2>/dev/null; then echo \"ALIVE:${'$'}PID\"; else echo \"DEAD:${'$'}PID\"; fi; ")
         c.append("echo \"STATEF:\"; cat ").append(Paths.STATE).append(" 2>/dev/null; ")
         c.append("echo \"ENDPROBE:\"")
@@ -90,6 +97,14 @@ object SysProbe {
                 s.dbg += " · 无输出（root 未授权？）"
                 cb(s)
                 return@exec
+            }
+
+            // root 校验：id -u 返回 0 说明 su 真正提权成功（而不是授权被拒/命令没跑到）
+            val u = line(out, "ROOTU")
+            s.rootOk = u != null && u.trim() == "0"
+            s.rootId = line(out, "ROOTID").orEmpty().trim()
+            if (!s.rootOk) {
+                s.dbg += " · id -u=" + (u?.trim().orEmpty().ifEmpty { "空" })
             }
 
             val cores = mutableListOf<Core>()

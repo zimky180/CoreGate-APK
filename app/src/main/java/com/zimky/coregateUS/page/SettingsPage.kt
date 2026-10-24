@@ -49,6 +49,7 @@ import com.zimky.coregateUS.ui.HairLine
 import com.zimky.coregateUS.ui.HintText
 import com.zimky.coregateUS.ui.KeyValueRow
 import com.zimky.coregateUS.ui.MonoText
+import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
 import com.zimky.coregateUS.ui.SubText
 import com.zimky.coregateUS.ui.SwitchRow
@@ -98,7 +99,7 @@ fun SettingsPage(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
 
@@ -322,6 +323,14 @@ fun SettingsPage(
                 KeyValueRow("service.sh", Paths.SERVICE)
                 KeyValueRow("配置", Paths.FILE)
                 KeyValueRow("配置已读", if (cfg.loaded) "是" else "否（读取失败）")
+                KeyValueRow(
+                    "Root 授权",
+                    when {
+                        s == null -> "未探测"
+                        s!!.rootOk -> if (s!!.rootId.isNotEmpty()) "已提权 · ${s!!.rootId}" else "已提权"
+                        else -> "未通过（su 没有返回 uid 0）"
+                    }
+                )
 
                 Gap(8.dp)
                 HairLine()

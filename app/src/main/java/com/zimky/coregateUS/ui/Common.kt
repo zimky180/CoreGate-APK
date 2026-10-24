@@ -37,6 +37,17 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
+ * 各页滚动内容的底部内边距。
+ *
+ * 底栏是悬浮在内容之上的（Box + align(BottomCenter) + 背景模糊），
+ * 所以内容区本身不再留白，而是让每页的滚动容器在末尾补出底栏遮挡的高度，
+ * 这样内容能流到底栏背后 → 底栏看起来才是「浮」着的，而不是「单独开一栏」。
+ *
+ * 64（底栏高）+ 28（底栏底部间距）+ 12（缓冲）= 104dp
+ */
+val PAGE_BOTTOM_INSET: Dp = 104.dp
+
+/**
  * 通用文本与间距组件。
  *
  * 视觉规范全部取自 Miuix 主题（[MiuixTheme.colorScheme]），不自建整套色板：

@@ -85,24 +85,6 @@ private const val MIN_REFRESH_GAP = 1_200L
 private val TAB_TITLES = listOf("锁核", "策略", "限频", "设置")
 
 /**
- * 内容区底部留白。
- *
- * 底栏是「悬浮」在内容之上的（Box + align(BottomCenter)），不是 Scaffold 的 bottomBar 槽位，
- * 所以内容区不会自动让出底栏占用的高度，必须手动留白，否则每页最后一张卡片会被底栏挡住。
- *
- * 这个值由三部分组成：
- *   1) 底栏自身高度 64.dp（FloatingBottomBar 内部 .height(64.dp)）；
- *   2) 底栏底部间距，正常是 28.dp，带手势条时是 8.dp + 手势条高度（约 24.dp），两者接近；
- *   3) 8.dp 缓冲，让最后一张卡片和底栏之间留一点缝，不贴死。
- *
- * 取 28.dp 这一档来算：64 + 28 + 8 = 100.dp。
- * 手势条机型实际底栏占位约 64 + 32 = 96.dp，100.dp 仍有余量，不会露。
- * 之所以不写成变量联动 barBottomPadding：那个值在 AppRoot 内部才能拿到，
- * 而 padding 是 Compose 每次重组都会重算的，写死一个够用的常量更简单也更稳。
- */
-private val CONTENT_BOTTOM_PADDING = 100.dp
-
-/**
  * 页面槽位：四页常驻 composition，切 Tab 只切换可见性，不销毁重建。
  *
  * 之前误写成 `if (visible) content()`，每次切 Tab 都会销毁整棵子树，
@@ -195,8 +177,8 @@ private fun AppRoot() {
         }
     }
 
-    // 首次进入：先读配置，读到后再拉一次状态
-    LaunchedEffect(Unit) {
+    /** 读配置。root 授权弹窗被拒时 loaded 会是 false，需要能重试。 */
+    fun loadConfig() {
         CoreConfig.load(RootShell) { c, pkgs, _ ->
             cfg = c
             packagesRaw = pkgs.orEmpty()
@@ -204,11 +186,21 @@ private fun AppRoot() {
         }
     }
 
+    // 首次进入：先读配置，读到后再拉一次状态
+    LaunchedEffect(Unit) {
+        loadConfig()
+    }
+
     // 生命周期：回到前台立刻刷一次
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refresh(false)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // 自愈：首次启动时若还没来得及点「允许」，配置就会永远读不到。
+                // 每次回前台发现没读到就重试一次（root 已授权时这是零成本）。
+                if (!cfg.loaded) loadConfig()
+                refresh(false)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
@@ -253,14 +245,12 @@ private fun AppRoot() {
             .background(MiuixTheme.colorScheme.background)
     ) {
         // 内容区：四页常驻，只显示当前那个。
-        // 底部留白 = 底栏高度（64dp）+ 底栏底部间距 + 一点缓冲，避免最后一张卡片被底栏挡住。
-        // 注意这里的留白要和下面 FloatingBottomBar 的 padding 保持一致，
-        // 底栏从「贴合屏幕底部」改成了「KSU 同款 28dp 悬浮」后，需要多留出这段距离。
+        // 铺满整屏、不留底部空白 —— 底栏是浮在上面的，内容可以流到它背后。
+        // 滚动内容自身的底部内边距由各页的 PAGE_BOTTOM_INSET 负责。
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(bottom = CONTENT_BOTTOM_PADDING)
         ) {
             PageSlot(visible = currentTab == 0) {
                 LockPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
