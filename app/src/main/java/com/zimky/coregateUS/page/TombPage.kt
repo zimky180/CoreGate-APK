@@ -1,6 +1,9 @@
 package com.zimky.coregateUS.page
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,27 +11,36 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.zimky.coregateUS.core.FreezeData
 import com.zimky.coregateUS.core.RootShell
+import com.zimky.coregateUS.core.TombData
 import com.zimky.coregateUS.ui.HintText
 import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
+import com.zimky.coregateUS.ui.Toaster
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
@@ -38,60 +50,65 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 墓碑二级页（从「策略」页点进来）。
  *
- * 设计立场（用户明确要求）：**不做引擎，只做探测展示**。
+ * 这一页就是墓碑本体：开关、冻结、解冻都在这里做，不再只做探测展示。
  *
- * 为什么不自己做一套墓碑：
- *   后台冻结是那种「做好了没人夸、做崩了开不了机」的东西，
- *   而且它盯的是整机所有后台进程，跟本模块「只盯 CPU 核心」的定位不是一回事。
- *   用户手机上已经有专门做这件事的工具，本页的作用是
- *   「让你一眼确认那个工具到底有没有真的在干活」，而不是再造一个。
+ * 状态真相全部来自 `--tomb-status` 的三段输出：
+ *   [on]      true / false
+ *   [engine]  cgroup_v2 / cgroup_v1 / sigstop
+ *   [item]    包名 \t pid \t true|false|gone
  *
- * 怎么判断「在不在生效」：
- *   冻结类工具真正生效时，后台包会处于 suspended 状态。
- *   本页面用 `pm list packages -d` 与 suspend 状态交叉判断，
- *   凡是「本模块没冻结、但系统里确实处于挂起态」的包，就是别的工具干的活。
- *   数量明显不为零 → 说明有东西在替你冻后台 → 判定为生效。
- *
- * 只读，不写任何东西。
- *
- * @param tombAlive 外部已知的探测结果，null 表示外层也没探到
- * @param onProbed 本页自己探到结果后回填给外层，让策略页摘要同步
- * @param onBack 返回上一页
+ * true 表示已经回读确认冻住了，false 表示登记了但没冻住，
+ * gone 表示登记过但进程已经退出。这三种必须在界面上能分辨，
+ * 否则用户根本不知道自己开的东西到底有没有用。
  */
+private const val SVC = "sh /data/adb/modules/CoreGate/service.sh"
+
 @Composable
 fun TombPage(
     sh: RootShell,
-    tombAlive: Boolean?,
-    onProbed: (Boolean, Int) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onChanged: () -> Unit
 ) {
     val cs = MiuixTheme.colorScheme
+    val scope = rememberCoroutineScope()
 
-    // 本页自己探一次，结果写进这两个状态
-    var alive by remember { mutableStateOf(tombAlive) }
-    var foreignCount by remember { mutableStateOf<Int?>(null) }
-    var checking by remember { mutableStateOf(true) }
+    var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var snap by remember { mutableStateOf(TombData.Snapshot()) }
+    var inputPkg by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        checking = true
-        val raw = execSuspend(sh, "sh /data/adb/modules/CoreGate/service.sh --freeze-status")
-        // exec 是异步回调，给它一点时间落地再解析（与 FreezePage 同一处理）
-        delay(350)
-        val snap = FreezeData.parse(raw)
-        val mine = snap.applied.keys
-        val foreign = snap.actual.keys.filterNot { it in mine }
-        foreignCount = foreign.size
-        val ok = foreign.isNotEmpty()
-        alive = ok
-        checking = false
-        onProbed(ok, foreign.size)
+    fun reload() {
+        scope.launch {
+            loading = true
+            var out = ""
+            sh.exec("$SVC --tomb-status") { _, o, _ -> out = o }
+            delay(350)
+            snap = TombData.parse(out)
+            loading = false
+        }
     }
+
+    fun act(cmd: String, okMsg: String) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            sh.exec(cmd) { _, _, _ -> }
+            delay(400)
+            Toaster.show(okMsg)
+            reload()
+            onChanged()
+            busy = false
+        }
+    }
+
+    LaunchedEffect(Unit) { reload() }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
+            .padding(horizontal = 14.dp)
+            .padding(top = 8.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // ── 顶部：返回 + 标题 ──────────────────────────────────────
@@ -105,47 +122,201 @@ fun TombPage(
             Text(text = "墓碑", color = cs.onSurface, fontSize = 17.sp)
         }
 
-        // ── 结论卡：一眼看结果 ────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "现在的真实情况", color = cs.onSurface, fontSize = 15.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    loading -> cs.onSurfaceVariantSummary.copy(alpha = 0.3f)
+                                    snap.effective -> cs.primary
+                                    else -> cs.onSurfaceVariantSummary.copy(alpha = 0.35f)
+                                }
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "墓碑",
+                        color = cs.onSurface,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SwitchCompact(
+                        checked = snap.on == true,
+                        enabled = !loading && !busy && snap.on != null,
+                        onCheckedChange = { want ->
+                            if (want) act("$SVC --tomb-on", "墓碑已开启")
+                            else act("$SVC --tomb-off", "墓碑已关闭，后台已全部解冻")
+                        }
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
+
+                val conclusion = when {
+                    loading -> "正在读取……"
+                    snap.on == null -> "还没读出来。可能是 root 授权被拒，或者模块还没装好。"
+                    snap.on == false -> "墓碑没开。打开上面的开关，才会开始冻结后台应用。"
+                    snap.frozenCount > 0 ->
+                        "正在生效，已冻住 ${snap.frozenPackages} 个应用。只有被真正冻住的进程才不耗电。"
+                    else -> "开关是开的，但现在一个都没冻住。可以在下面冻一个试试。"
+                }
                 Text(
-                    text = when {
-                        checking -> "正在看…"
-                        alive == true -> "有工具在冻结后台，说明墓碑确实在生效"
-                        else -> "没看到有东西在冻结后台，墓碑目前没有生效"
-                    },
-                    color = cs.onSurface,
-                    fontSize = 13.sp,
+                    text = conclusion,
+                    color = cs.onSurfaceVariantSummary,
+                    fontSize = 12.sp,
                     lineHeight = 18.sp
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+
+                if (snap.engine.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    InfoRow(
+                        label = "冻结方式",
+                        value = when (snap.engine) {
+                            "cgroup_v2" -> "cgroup v2（本机推荐）"
+                            "cgroup_v1" -> "cgroup v1（兼容模式）"
+                            "sigstop" -> "信号暂停（保底方式）"
+                            else -> snap.engine
+                        }
+                    )
+                }
+
+                if (!loading && snap.on != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    InfoRow(
+                        label = "当前冻结",
+                        value = "${snap.frozenPackages} 个应用 / ${snap.frozenCount} 个进程"
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TextButton(
+                        text = "重新读取",
+                        onClick = { if (!loading) reload() },
+                        colors = ButtonDefaults.textButtonColorsPrimary()
+                    )
+                    if (snap.items.isNotEmpty()) {
+                        TextButton(
+                            text = if (busy) "处理中……" else "全部解冻",
+                            onClick = { act("$SVC --tomb-thaw-all", "已全部解冻") },
+                            colors = ButtonDefaults.textButtonColorsPrimary()
+                        )
+                    }
+                }
+            }
+        }
+
+        if (!loading && snap.items.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Text(
+                        text = "正在冻结的应用",
+                        color = cs.onSurface,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "点一下某个应用可以单独解冻它。",
+                        color = cs.onSurfaceVariantSummary,
+                        fontSize = 11.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    snap.grouped().forEachIndexed { idx, pair ->
+                        if (idx > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(cs.onSurfaceVariantSummary.copy(alpha = 0.08f))
+                            )
+                        }
+                        PkgRow(
+                            pkg = pair.first,
+                            items = pair.second,
+                            busy = busy,
+                            onThaw = {
+                                act("$SVC --tomb-thaw ${pair.first}", "已解冻 ${pair.first}")
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text(
-                    text = when (val n = foreignCount) {
-                        null -> "被别的工具挂起的应用数量：还没数出来"
-                        0 -> "被别的工具挂起的应用数量：0 个"
-                        else -> "被别的工具挂起的应用数量：$n 个"
-                    },
+                    text = "手动冻结一个应用",
+                    color = cs.onSurface,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "填包名，比如 com.example.app。不确定就先别填。",
                     color = cs.onSurfaceVariantSummary,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
+                    fontSize = 11.5.sp
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                HintText("这个数字是「本模块没动、但系统里确实被挂起」的应用数量。它不是本模块冻的。")
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(cs.surfaceContainerHigh)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    BasicTextField(
+                        value = inputPkg,
+                        onValueChange = { inputPkg = it.trim() },
+                        singleLine = true,
+                        textStyle = TextStyle(color = cs.onSurface, fontSize = 13.sp),
+                        cursorBrush = SolidColor(cs.primary),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { inner ->
+                            if (inputPkg.isEmpty()) {
+                                Text(
+                                    text = "例如 com.example.app",
+                                    color = cs.onSurfaceVariantSummary.copy(alpha = 0.6f),
+                                    fontSize = 13.sp
+                                )
+                            }
+                            inner()
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                TextButton(
+                    text = if (busy) "处理中……" else "冻结",
+                    onClick = {
+                        val p = inputPkg.trim()
+                        if (p.isEmpty()) Toaster.show("先填包名")
+                        else act("$SVC --tomb-freeze $p", "已提交冻结 $p")
+                    },
+                    colors = ButtonDefaults.textButtonColorsPrimary()
+                )
             }
         }
 
-        // ── 说明卡 ────────────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "这是干什么的", color = cs.onSurface, fontSize = 15.sp)
+                Text(text = "这一项改了什么", color = cs.onSurface, fontSize = 15.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "墓碑是指「应用退到后台就被挂起来、不占资源」这一类做法。" +
-                        "它能省电、也能省内存，但前提是那套工具真的在干活。\n\n" +
-                        "很多人的情况是装了个冻结工具，以为一直在生效，其实早就被系统杀掉了，" +
-                        "所以后台一直在跑、电一直在掉。这一页就是用来看清这件事的。",
+                    text = "冻的是应用的进程，不是禁用应用。它还在，也不会从任何列表里消失，" +
+                        "只是不跑、不耗电。你主动打开它就会恢复。\n\n" +
+                        "关掉上面的开关会立刻全部解冻，不会留下冻住的应用。",
                     color = cs.onSurfaceVariantSummary,
                     fontSize = 11.5.sp,
                     lineHeight = 17.sp
@@ -153,38 +324,113 @@ fun TombPage(
             }
         }
 
-        // ── 为什么不做一套 ────────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "为什么这里不能替你冻结", color = cs.onSurface, fontSize = 15.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "后台冻结跟锁核不是一类事。它管的是整台手机的所有应用，" +
-                        "一旦漏掉了该活着的那个，电话、闹钟、消息推送就可能收不到，严重的会开不了机。\n\n" +
-                        "所以这一项只负责「看」，不负责「做」。你要冻结后台，请用你原来那套工具；" +
-                        "这一页负责告诉你它到底有没有在工作。",
-                    color = cs.onSurfaceVariantSummary,
-                    fontSize = 11.5.sp,
-                    lineHeight = 17.sp
-                )
-            }
-        }
+        HintText("冻结只改运行时的 cgroup 状态，重启后自动还原，不写任何系统分区。")
+    }
+}
 
-        HintText("本页只读，不会冻结或解冻任何应用。")
+/* ------------------------------------------------------------------ */
+/* 组件                                                                */
+/* ------------------------------------------------------------------ */
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    val cs = MiuixTheme.colorScheme
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(text = label, color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
+        Spacer(modifier = Modifier.weight(1f))
+        Text(text = value, color = cs.onSurface, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun PkgRow(
+    pkg: String,
+    items: List<TombData.Item>,
+    busy: Boolean,
+    onThaw: () -> Unit
+) {
+    val cs = MiuixTheme.colorScheme
+    val frozenN = items.count { it.frozen }
+    val dotColor = when {
+        frozenN == 0 -> cs.onSurfaceVariantSummary.copy(alpha = 0.35f)
+        frozenN == items.size -> cs.primary
+        else -> cs.primary.copy(alpha = 0.5f)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !busy) { onThaw() }
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(dotColor)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = pkg, color = cs.onSurface, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = items.joinToString("   ") {
+                    val tag = when {
+                        it.frozen -> "真的冻住了"
+                        it.gone -> "进程已退出"
+                        else -> "没冻住"
+                    }
+                    "${it.pid} $tag"
+                },
+                color = cs.onSurfaceVariantSummary,
+                fontSize = 10.5.sp,
+                lineHeight = 14.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = if (busy) "……" else "解冻",
+            color = if (busy) cs.onSurfaceVariantSummary.copy(alpha = 0.4f) else cs.primary,
+            fontSize = 12.sp
+        )
     }
 }
 
 /**
- * 执行一条 root 命令并拿到它的标准输出（挂起，不阻塞主线程）。
+ * 紧凑开关。
  *
- * 与 SpoofPage.readProp 同因同解：RootShell 的回调经 main.post 回到主线程，
- * 若在主线程上同步等待，回调永远投递不进来 —— 死锁。
+ * 与 FreezePage 里的同名组件视觉一致；这里单独实现一份是为了避免
+ * 把一个 private 组件跨文件暴露成公共 API —— 两页的开关都只有这一处用途。
  */
-private suspend fun execSuspend(sh: RootShell, cmd: String): String =
-    withTimeoutOrNull(4000) {
-        suspendCancellableCoroutine<String> { cont ->
-            sh.exec(cmd) { _, o, _ ->
-                if (cont.isActive) cont.resume(o)
-            }
-        }
-    }.orEmpty()
+@Composable
+private fun SwitchCompact(
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val cs = MiuixTheme.colorScheme
+    val track = when {
+        !enabled -> cs.onSurfaceVariantSummary.copy(alpha = 0.15f)
+        checked -> cs.primary
+        else -> cs.surfaceContainerHigh
+    }
+    val knob = if (checked) Color.White else cs.onSurfaceVariantSummary.copy(alpha = 0.9f)
+
+    Box(
+        modifier = Modifier
+            .size(width = 38.dp, height = 22.dp)
+            .clip(RoundedCornerShape(11.dp))
+            .background(track)
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(horizontal = 2.dp),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(knob)
+        )
+    }
+}

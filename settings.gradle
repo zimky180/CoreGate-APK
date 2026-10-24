@@ -5,14 +5,21 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
+        // 已核实 io.github.libxposed:api:102.0.0 与 :service:102.0.0 均在 Maven Central
+        // （repo1.maven.org/maven2/io/github/libxposed/api/maven-metadata.xml 可见 101.0.0/101.0.1/102.0.0），
+        // 故 mavenCentral() 已足够。这里按官方示例补 mavenLocal 只覆盖该 group，
+        // 便于本地调试时用自编译产物替换，不影响其他依赖的解析顺序。
+        mavenLocal {
+            content {
+                includeGroup("io.github.libxposed")
+            }
+        }
     }
 }
-
 rootProject.name = "CoreGate"
 include ':app'

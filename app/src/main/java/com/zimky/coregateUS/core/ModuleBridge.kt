@@ -47,6 +47,58 @@ object ModuleBridge {
         }
     }
 
+    // ── 单核手动上下线 ──────────────────────────────────────────────
+    // 语义说明（与 service.sh 的 manual_off 清单严格对应）：
+    //   用户点一个核 → 期望它【一直】保持离线，不受「切到游戏自动全核恢复」影响。
+    //   所以这里不能直接写 sysfs，必须走 service.sh 的 --core-off：
+    //   它会把核号记进 manual_off 清单，do_lock() 每轮按回离线、do_unlock() 主动跳过。
+    //   若绕过模块直写 sysfs，下一轮自动恢复就会把它拉回来，用户会以为按钮没生效。
+
+    /**
+     * 封锁单个核心（写入 manual_off 清单并立刻下线）。
+     *
+     * @param cpu 核号；cpu0 永不封锁，调用方应已排除
+     */
+    fun coreOff(sh: RootShell, cpu: Int, cb: ((ok: Boolean, msg: String) -> Unit)?) {
+        runSimple(sh, "--core-off $cpu") { ok, msg -> cb?.invoke(ok, msg) }
+    }
+
+    /** 解除单个核心的封锁（移出清单并立刻上线）。 */
+    fun coreOn(sh: RootShell, cpu: Int, cb: ((ok: Boolean, msg: String) -> Unit)?) {
+        runSimple(sh, "--core-on $cpu") { ok, msg -> cb?.invoke(ok, msg) }
+    }
+
+    /** 清空手动清单并恢复全部核心。 */
+    fun coreClear(sh: RootShell, cb: ((ok: Boolean, msg: String) -> Unit)?) {
+        runSimple(sh, "--core-clear") { ok, msg -> cb?.invoke(ok, msg) }
+    }
+
+    /**
+     * 简单命令（输出只有 OK / FAIL / BADCPU）的统一执行与解析。
+     *
+     * 判定规则：输出里出现独立的一行 OK 才算成功。
+     * 不用 contains("OK")，否则 "FAIL" 之外的任何含 OK 字样都会误判成功。
+     */
+    private fun runSimple(
+        sh: RootShell,
+        args: String,
+        cb: ((ok: Boolean, msg: String) -> Unit)
+    ) {
+        val cmd = "[ -f " + Paths.SERVICE + " ] || { echo 'NO_SERVICE'; exit 1; }; " +
+            "sh " + Paths.SERVICE + " " + args
+        sh.exec(cmd) { code, out, err ->
+            val text = (out ?: "").trim()
+            val lines = text.split('\n').map { it.trim() }
+            when {
+                lines.contains("OK") -> cb(true, "")
+                lines.contains("BADCPU") -> cb(false, "核号无效")
+                text.contains("NO_SERVICE") -> cb(false, "找不到 service.sh，模块可能未安装")
+                lines.contains("FAIL") -> cb(false, "内核拒绝了这次操作（可能被厂商策略锁定）")
+                else -> cb(false, firstLine(err, out, code))
+            }
+        }
+    }
+
     private fun buildCmd(flag: String, count: Int): String {
         val sb = StringBuilder()
         sb.append("[ -f ").append(Paths.SERVICE).append(" ] || { echo 'NO_SERVICE'; exit 1; }; ")

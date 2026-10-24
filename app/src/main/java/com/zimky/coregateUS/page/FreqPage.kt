@@ -85,7 +85,13 @@ fun FreqPage(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            // 一级页必须自己铺满整屏：
+            // 这四页是常驻 composition 的，靠 PageSlot 的 zIndex 叠在一起。
+            // 根 Column 若只写 fillMaxWidth，竖向高度会随内容收缩，
+            // 内容不足一屏时下面那块就不属于本页 —— 既会透出下层页，
+            // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
+            // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
+            .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)

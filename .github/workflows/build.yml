@@ -27,7 +27,12 @@ jobs:
           [ -x "$SM" ] || SM=$(find "$SDK/cmdline-tools" -name sdkmanager -type f | head -n 1)
           echo "sdkmanager -> $SM"
           yes | "$SM" --licenses > /dev/null 2>&1 || true
-          "$SM" "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
+          # compileSdk 37：优先装最新稳定平台 android-37.2，失败则回退 37.0，
+          # 避免 Google 下架某个版本时整个构建在 SDK 阶段硬失败。
+          "$SM" "platform-tools" "build-tools;36.0.0" || true
+          "$SM" "platforms;android-37.2" \
+            || "$SM" "platforms;android-37.1" \
+            || "$SM" "platforms;android-37.0"
       # AGP 9.1.1 要求 Gradle >= 9.3.1，这里显式指定，不依赖仓库里的 wrapper
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -35,6 +40,23 @@ jobs:
           gradle-version: '9.3.1'
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
+      # 关键闸门：packaging.merges 一旦漏配，APK 里就没有 META-INF/xposed/*，
+      # LSPosed 列表里本模块会「根本不出现」且没有任何报错。所以构建完立刻验，
+      # 不合格让 CI 直接失败，别让坏包流到真机上再去猜。
+      - name: Verify Xposed metadata in APK
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          echo "Checking: $APK"
+          LIST=$(unzip -l "$APK" | grep "META-INF/xposed/" || true)
+          echo "$LIST"
+          for f in java_init.list module.prop scope.list; do
+            if ! echo "$LIST" | grep -q "META-INF/xposed/$f"; then
+              echo "::error::APK 缺少 META-INF/xposed/$f —— 检查 app/build.gradle 的 packaging.merges"
+              exit 1
+            fi
+          done
+          echo "xposed metadata OK"
+
       - name: Locate APK
         id: apk
         run: |

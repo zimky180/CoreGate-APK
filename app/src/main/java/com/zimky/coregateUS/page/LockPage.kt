@@ -63,7 +63,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 与 KernelSU 管理器首页保持同一套组件语言。
  *
  * @param frozenCount  本模块冻结中且系统确实已冻结的项数；null 表示尚未探明
- * @param tombAlive    是否有非本模块的工具正在冻结后台；null 表示尚未探明
+ * @param tombAlive    本模块墓碑引擎当前是否真的冻住了至少一个进程；null 表示尚未探明
  * @param onOpenFreeze 跳转冻结管理二级页
  * @param onOpenTomb   跳转墓碑探测二级页
  */
@@ -95,7 +95,13 @@ fun LockPage(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            // 一级页必须自己铺满整屏：
+            // 这四页是常驻 composition 的，靠 PageSlot 的 zIndex 叠在一起。
+            // 根 Column 若只写 fillMaxWidth，竖向高度会随内容收缩，
+            // 内容不足一屏时下面那块就不属于本页 —— 既会透出下层页，
+            // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
+            // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
+            .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -184,9 +190,9 @@ fun LockPage(
                 Gap(8.dp)
                 Text(
                     text = when (tombAlive) {
-                        null -> "正在读取后台状态，稍等一下"
-                        true -> "有工具在冻结后台，正在生效"
-                        false -> "没看到有东西在冻结后台"
+                        null -> "正在读取墓碑状态，稍等一下"
+                        true -> "墓碑已冻住后台应用，正在生效"
+                        false -> "墓碑没冻住任何应用，等于没生效"
                     },
                     color = cs.onSurface,
                     fontSize = 14.sp,
@@ -204,7 +210,7 @@ fun LockPage(
         }
 
         // ── 卡片三：冻结状态（独立一框）───────────────────────────────
-        // 数字取 FreezeData.Snapshot.effectiveCount —— 「本模块冻了、且系统里确实冻上了」
+        // 数字取 FreezeData.Snapshot.scopedFrozenCount —— 「本模块作用域内、且系统里确实冻上了」
         // 的交集，不是「打算冻几个」。用户要看的是真冻没冻上，所以必须是前者。
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
@@ -294,12 +300,54 @@ fun LockPage(
                         ) {
                             rowCores.forEach { core ->
                                 val col = coreColor(core)
+                                // 点方块 = 切换这个核的「手动封锁」状态：
+                                //   在线 → 封锁（写进模块的 manual_off 清单，主循环会一直按着它）
+                                //   离线 → 解封（移出清单并立刻拉回在线）
+                                //
+                                // 为什么在线状态以 snapshot 为准、而不是本地点一下改本地状态：
+                                //   封锁可能被内核/厂商策略拒绝，真正结果只有重新探测才知道。
+                                //   所以统一走「发命令 → 用回调结果提示 → onRefresh() 重读真机状态」，
+                                //   界面永远显示设备真实的样子，不做乐观更新。
+                                //
+                                // cpu0 不给点：它永不下线，点了也只会失败，反而让人以为模块坏了。
+                                val clickable = core.id != 0 && !busy
                                 CoreCell(
                                     id = core.id,
                                     online = core.online,
                                     freqText = if (core.online) SysProbe.fmtMhz(core.curFreq) else "离线",
                                     color = col,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f),
+                                    onClick = if (clickable) {
+                                        {
+                                            busy = true
+                                            lockMsg = ""
+                                            val action = if (core.online) {
+                                                { cb: (Boolean, String) -> Unit ->
+                                                    ModuleBridge.coreOff(sh, core.id, cb)
+                                                }
+                                            } else {
+                                                { cb: (Boolean, String) -> Unit ->
+                                                    ModuleBridge.coreOn(sh, core.id, cb)
+                                                }
+                                            }
+                                            action { ok, msg ->
+                                                busy = false
+                                                if (ok) {
+                                                    lockMsg = if (core.online) {
+                                                        "已封锁 cpu${core.id}，切到游戏时会自动恢复全部核心。"
+                                                    } else {
+                                                        "已解除 cpu${core.id} 的封锁。"
+                                                    }
+                                                    lockMsgColor = Semantic.OK
+                                                } else {
+                                                    lockMsg = msg
+                                                    lockMsgColor = Semantic.ERR
+                                                }
+                                                // 无论成败都重读真机状态：成功要看到变化，失败要看到「其实没变」
+                                                onRefresh()
+                                        }
+                                        }
+                                    } else null
                                 )
                             }
                             // 补齐空格，保持四列对齐

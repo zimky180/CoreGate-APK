@@ -80,11 +80,22 @@ fun SettingsPage(
     val cs = MiuixTheme.colorScheme
     val s = snapshot
     val daemonAlive = s?.daemonAlive == true
-
     // ── 名单编辑缓冲：父级刷新回来时同步，用户改过则不覆盖 ──
     var listText by remember { mutableStateOf(packagesRaw) }
     var listDirty by remember { mutableStateOf(false) }
     if (!listDirty && listText != packagesRaw) listText = packagesRaw
+
+    // ── 包名查询（真机反馈要求把搜索加回来）──
+    // 用户最常见的疑问是「我的游戏到底进没进名单」，
+    // 以前只能自己在那一大坨文本框里肉眼找，很容易看漏。
+    // 这里单独给一个查询框，实时对当前名单做子串匹配：
+    //   - 命中：直接高亮显示匹配到的那一行，告诉用户在第几行；
+    //   - 没命中：明确提示「没进名单」，并给一个「加入名单」的按钮，
+    //     点了就往名单末尾追加一行，同时把 listDirty 置位，
+    //     用户再点旁边的「保存名单」即可落盘。
+    // 匹配大小写不敏感，因为 Android 包名虽然全小写，但用户手抄时常带大写。
+    var query by remember { mutableStateOf("") }
+
 
     // ── 日志状态 ──
     var logText by remember { mutableStateOf("") }
@@ -96,7 +107,13 @@ fun SettingsPage(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            // 一级页必须自己铺满整屏：
+            // 这四页是常驻 composition 的，靠 PageSlot 的 zIndex 叠在一起。
+            // 根 Column 若只写 fillMaxWidth，竖向高度会随内容收缩，
+            // 内容不足一屏时下面那块就不属于本页 —— 既会透出下层页，
+            // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
+            // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
+            .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -160,6 +177,67 @@ fun SettingsPage(
             }
         }
 
+        // ── 卡片：包名查询 ────────────────────────────────────────────
+        // 装完模块最常干的事：确认某个游戏到底进没进名单。
+        // 以前只能对着一大段文本肉眼找，这里给一个即时查询。
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(text = "包名查询", color = cs.onSurface, fontSize = 16.sp)
+                Gap(10.dp)
+                SubText("确认某个应用是否已在游戏名单里，没在就一键加进去。")
+                Gap(10.dp)
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = cs.onSurface
+                    ),
+                    placeholder = { HintText("com.tencent.tmgp.sgame") },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors()
+                )
+                val q = query.trim()
+                if (q.isNotEmpty()) {
+                    Gap(12.dp)
+                    val allLines = listText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                    val exactIdx = allLines.indexOfFirst { it.equals(q, ignoreCase = true) }
+                    val fuzzy = allLines.filter { it.contains(q, ignoreCase = true) }
+                    when {
+                        exactIdx >= 0 -> {
+                            StateBadge("已在名单", Semantic.OK)
+                            Gap(6.dp)
+                            MonoText("第 ${exactIdx + 1} 行：${allLines[exactIdx]}")
+                        }
+                        fuzzy.isNotEmpty() -> {
+                            StateBadge("部分匹配", Semantic.WARN)
+                            Gap(6.dp)
+                            fuzzy.take(5).forEach { MonoText(it) }
+                            if (fuzzy.size > 5) {
+                                Gap(4.dp)
+                                SubText("另有 ${fuzzy.size - 5} 条未展开")
+                            }
+                        }
+                        else -> {
+                            StateBadge("未进名单", Semantic.ERR)
+                            Gap(8.dp)
+                            TextButton(
+                                text = "把「$q」加入名单",
+                                onClick = {
+                                    listText = appendPackage(listText, q)
+                                    listDirty = true
+                                    Toaster.show("已加到名单末尾，记得点「保存名单」")
+                                },
+                                colors = ButtonDefaults.textButtonColorsPrimary()
+                            )
+                        }
+                    }
+                }
+            }
+        }
         // ── 卡片二：游戏名单 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
@@ -431,6 +509,21 @@ fun SettingsPage(
     }
 }
 
+/**
+ * 往名单文本末尾追加一个包名。
+ *
+ * 名单是「每行一个包名」的纯文本，用户手动粘贴时常带空行与首尾空格，
+ * 所以先去空行再判重，避免同一个包名被塞进去两次让用户困惑。
+ */
+private fun appendPackage(text: String, pkg: String): String {
+    val target = pkg.trim()
+    if (target.isEmpty()) return text
+    val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    if (lines.any { it.equals(target, ignoreCase = true) }) return text
+    return (lines + target).joinToString("\n") + "\n"
+}
+
+/** 状态徽标：静态，白色文字，与 KernelSU 徽标一致。 */
 /** 状态徽标：静态，白色文字，与 KernelSU 徽标一致。 */
 @Composable
 private fun StateBadge(text: String, color: Color) {

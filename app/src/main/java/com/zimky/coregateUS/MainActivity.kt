@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +50,7 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.FreezeData
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.core.TombData
 import com.zimky.coregateUS.page.FreqPage
 import com.zimky.coregateUS.page.FreezePage
 import com.zimky.coregateUS.page.LockPage
@@ -133,16 +138,60 @@ private fun PageSlot(visible: Boolean, content: @Composable () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .zIndex(if (visible) 1f else 0f)
+            // 底色必须铺在这里，不能只靠各页根 Column 自己撑开。
+            //
+            // 真机反馈：切到「策略」页时，页面上只多出几个字，底下的「锁核」页
+            // 内容整片透出来。原因是 PageSlot 的 Box 是透明的，
+            // 一旦某一页内容不足一屏（根 Column 只有 fillMaxWidth，竖向随内容收缩），
+            // 短出来的那块就直接露出下面 zIndex 更低的页。
+            // 按钮「点不着」也是同一个根因：Column 只有内容那么高，
+            // 下方区域根本不属于这页，点击自然落到别的页上。
+            //
+            // 在 PageSlot 上铺一层主题底色后：
+            //   1) 可见页无论内容多短，都是整屏不透明，不可能透出别的页；
+            //   2) 隐藏页因为 graphicsLayer.alpha = 0，这层底色也一起不绘制，
+            //      不会反过来盖住可见页（alpha 作用于整个节点，含 background）。
+            // 颜色取 MiuixTheme.background，与 RootGate 门槛页、KSU 原生底色一致。
+            .background(MiuixTheme.colorScheme.background)
             .graphicsLayer {
+                // 隐藏页完全不参与绘制：alpha=0 且不落任何像素
                 alpha = if (visible) 1f else 0f
             }
-            .then(
-                if (visible) Modifier
-                // 隐藏页：跳过自身及其子树的指针命中，彻底不抢手势
-                else Modifier.pointerInput(Unit) { }
-            )
     ) {
         content()
+        // 隐藏页的遮挡层：Compose 的 alpha 不参与命中测试裁剪，
+        // 仅靠 alpha=0 的话，这四个常驻页的 verticalScroll 会一起抢手势，
+        // 表现就是「滑动乱跳、按钮点了没反应」。
+        //
+        // 旧写法 Modifier.pointerInput(Unit) { } 是无效的 —— 它只是注册了一个
+        // 什么都不做的 pointerInput node，事件照样会往下传。
+        //
+        // 这里改成「可见时零成本、隐藏时整块吞掉所有指针事件」的写法。
+        // 只用 foundation 里已在本工程用过的 awaitEachGesture / awaitFirstDown，
+        // 不额外引 awaitPointerEventScope，避免多一套 pointer API 依赖。
+        //
+        // 关键点：不能只 consume 按下那一下。滑动时手指按下后还会持续送来
+        // 移动事件，只吞按下的话，移动事件照样会漏给下面那页的 verticalScroll，
+        // 于是「滑一下跳一下」。所以按下之后要把整段手势的每次变化都吃掉，
+        // 直到手指抬起。
+        if (!visible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            // 一直吃到这一指抬起为止
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                event.changes.forEach { it.consume() }
+                                if (event.changes.all { it.changedToUpIgnoreConsumed() }) break
+                            }
+                        }
+                    }
+            )
+        }
     }
 }
 
@@ -221,15 +270,16 @@ private fun AppRoot() {
     /**
      * 探一次冻结与墓碑的实况，喂给策略页的摘要。
      *
-     * 只跑一条命令：`--freeze-status`。它输出的 actual 段是「系统里当前真被挂起的包」，
-     * applied 段是「本模块自己冻的」。两个差集非空 = 有别的工具在冻后台，
-     * 也就等于墓碑在生效 —— 这就是墓碑页那套判断的同一份数据，
-     * 所以这里顺手把 tombAlive 也一起算掉，不必等用户点进墓碑页才知道。
+     * 跑两条命令：`--freeze-status` 给冻结页的计数，`--tomb-status` 给墓碑是否真在生效。
+     * 合并成一次调用，避免「一次刷新 = 多次 root」被判为入侵。
+     *
+     * tombAlive 的语义已经改了：以前是「有别的工具在冻后台」，现在墓碑由本模块自己做，
+     * 所以它等于「本模块引擎当前真的冻住了至少一个进程」。开着但一个没冻住，仍算没生效。
      *
      * 为什么不在 refresh() 里做：refresh 走的是 SysProbe，它读的是 sysfs 与
      * /data 下的状态文件，实现上完全独立；把冻结状态塞进同一个回调会让
      * 「一次刷新 = 两次 root」：用户狂点刷新时更容易被安全机制判为入侵。
-     * 这里是独立的、低频的路径（只在启动与冻结页改动后调用）。
+     * 这里是独立的、低频的路径（只在启动与相关页改动后调用）。
      */
     fun probeFreeze() {
         if (!alive) return
@@ -237,12 +287,16 @@ private fun AppRoot() {
             // exec 的 stdout 已经回主线程了，但脚本内部 pm 的写入可能还没落完
             main.postDelayed({
                 val snap = FreezeData.parse(out)
-                if (snap.applied.isEmpty() && snap.actual.isEmpty()) {
-                    // 一条都没读到 = 脚本没给结果（未授权 / 模块未装），保持 null 不伪造 0
-                    return@postDelayed
+                if (snap.applied.isNotEmpty() || snap.actual.isNotEmpty()) {
+                    frozenCount = snap.scopedFrozenCount
                 }
-                frozenCount = snap.effectiveCount
-                tombAlive = snap.actual.keys.any { it !in snap.applied.keys }
+            }, 350L)
+        }
+        RootShell.exec("sh /data/adb/modules/CoreGate/service.sh --tomb-status") { _, out, _ ->
+            main.postDelayed({
+                val t = TombData.parse(out)
+                // 读不到（授权被拒 / 模块没装）时保持原值，不伪造 false
+                if (t.on != null) tombAlive = t.effective
             }, 350L)
         }
     }
@@ -449,19 +503,21 @@ private fun AppRoot() {
                                     probeFreeze()
                                 }
                             )
-                            // 伪造机型页：只读展示系统当前报的三项属性，不写任何东西，
-                            // 所以不需要 cfg —— 签名里也没有它。
+                            // 伪造机型页：改动落在 /data/adb/CoreGate/spoof.json，
+                            // 不写任何系统属性，所以不需要 cfg —— 签名里也没有它；
+                            // 但开关一变就要让策略页摘要跟着刷新，故接 onChanged。
                             SubPage.SPOOF -> SpoofPage(
                                 sh = RootShell,
-                                onBack = { subPage = SubPage.NONE }
+                                onBack = { subPage = SubPage.NONE },
+                                onChanged = { refresh(true) }
                             )
-                            // 墓碑页：本页自己探一次，探到的结果通过 onProbed 回填 tombAlive，
-                            // 这样返回策略页时摘要会跟着变成「正在生效 / 没有生效」。
+                            // 墓碑页：页内自己读 --tomb-status，任何改动后通过 onChanged
+                            // 通知外层刷一次快照与冻结/墓碑实况，这样返回策略页时
+                            // 摘要会立刻跟着变。
                             SubPage.TOMB -> TombPage(
                                 sh = RootShell,
-                                tombAlive = tombAlive,
-                                onProbed = { ok, _ -> tombAlive = ok },
-                                onBack = { subPage = SubPage.NONE }
+                                onBack = { subPage = SubPage.NONE },
+                                onChanged = { refresh(true); probeFreeze() }
                             )
                         }
                     }

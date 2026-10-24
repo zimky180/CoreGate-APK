@@ -11,6 +11,9 @@ lifecycle = "2.11.0"
 miuix = "0.9.4"
 materialKolor = "3.0.1"
 coroutines = "1.9.0"
+# libxposed：Xposed 模块 API。api 用 compileOnly（运行时由框架提供，不能打进 APK），
+# service 为 LSPosed 侧接口，只在需要调用框架专有 API 时才用，这里同样 compileOnly 更安全。
+libxposed = "102.0.0"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -40,3 +43,5 @@ miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference-android", 
 miuix-blur = { module = "top.yukonga.miuix.kmp:miuix-blur-android", version.ref = "miuix" }
 
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "materialKolor" }
+
+libxposed-api = { module = "io.github.libxposed:api", version.ref = "libxposed" }

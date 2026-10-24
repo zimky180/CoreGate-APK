@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  libxposed 的作用域配置入口（API 100+）。
+  这里的每一项是「用户可以勾选作用域的设置项」，不是模块自己的开关。
+  CoreGate 只有一个作用对象：目标应用进程内的属性读取。
+-->
+<resources>
+    <string name="xposed_scope_desc">勾选要让伪造机型生效的应用；不勾任何应用则只在已启用的进程里生效。
+注意：伪造只在应用进程内改「读取到的值」，系统属性一个字节都不写，getprop 仍返回真机值。</string>
+</resources>

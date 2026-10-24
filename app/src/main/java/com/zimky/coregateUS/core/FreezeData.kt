@@ -136,6 +136,36 @@ object FreezeData {
         val staleList: List<String>
             get() = applied.keys.filterNot { actual.containsKey(it) }
 
+        /**
+         * 系统当前被停用的应用总数。
+         *
+         * 数据来自 `pm list packages -d`，**包含用户自己在系统设置里手动停用的应用**，
+         * 不等于本模块冻结的数量 —— 只适合作背景参考，不要直接当「已冻结 N 个」展示。
+         */
+        val systemDisabledCount: Int by lazy { actual.size }
+
+        /**
+         * 落在本模块作用域内的冻结包：`actual` 里出现、且属于 [GROUPS] 任一组的包。
+         *
+         * 用包名清单匹配而不是靠 freeze.state 记录 —— 即使记录被删了
+         * （freeze_restore_all 末尾会 rm 掉 freeze.state），只要组内包在系统里
+         * 确实处于停用/挂起状态，这里依然数得出来。
+         */
+        val inScopeFrozen: Set<String> by lazy {
+            val scope = HashSet<String>()
+            for (g in GROUPS) scope.addAll(g.pkgs)
+            actual.keys.filterTo(HashSet()) { it in scope }
+        }
+
+        /**
+         * 界面上真正该给用户看的「已冻结」数字：本模块作用域内、确实处于冻结态的条目数。
+         *
+         * 它既不像 [effectiveCount] 那样依赖 freeze.state（记录丢了就归零，
+         * 主页因此误报「没有冻结」），也不像 [systemDisabledCount] 那样
+         * 把用户手动停用的无关包也算进来。
+         */
+        val scopedFrozenCount: Int by lazy { inScopeFrozen.size }
+
         fun isGroupOn(key: String): Boolean = groups[key] == true
     }
 

@@ -96,8 +96,8 @@ fun PolicyPage(
     // 墓碑摘要：同上，与主页卡片二对齐
     val tombSummary = when (tombAlive) {
         null -> "还没探到"
-        true -> "有工具在冻结后台，正在生效"
-        false -> "没看到有东西在冻结后台"
+        true -> "已冻住后台应用，正在生效"
+        false -> "没冻住任何应用，等于没生效"
     }
 
     // 输入框文本与焦点状态
@@ -111,7 +111,13 @@ fun PolicyPage(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            // 一级页必须自己铺满整屏：
+            // 这四页是常驻 composition 的，靠 PageSlot 的 zIndex 叠在一起。
+            // 根 Column 若只写 fillMaxWidth，竖向高度会随内容收缩，
+            // 内容不足一屏时下面那块就不属于本页 —— 既会透出下层页，
+            // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
+            // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
+            .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(14.dp)

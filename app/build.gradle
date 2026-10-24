@@ -38,7 +38,14 @@ android {
 
     packaging {
         resources {
-            excludes += ['/META-INF/{AL2.0,LGPL2.1}']
+            // libxposed 官方写法：把 resources/META-INF/xposed/* 合并进 APK。
+            // 关键：AGP 的 excludes 优先级高于 merges —— 之前这里漏了一条
+            //       excludes += '**'，把整个 resources 全排掉，导致
+            //       META-INF/xposed/ 三件套（java_init.list / module.prop / scope.list）
+            //       永远进不了 APK，LSPosed 识别不到模块、只能逐个弹「请求 hook」窗口。
+            // 这里只排掉签名/许可这类无用条目，绝不能用 '**'。
+            merges += 'META-INF/xposed/*'
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
         }
     }
 }
@@ -73,4 +80,11 @@ dependencies {
     implementation libs.miuix.blur
 
     implementation libs.material.kolor
+
+    // libxposed：运行时由 Xposed 框架提供，绝不能打进 APK（打进会与框架自身类冲突）。
+    // 官方 README 的模块开发者写法只有这一条：
+    //   compileOnly("io.github.libxposed:api:102.0.0")
+    // service 是给「写 Xposed 框架本身」的人用的（framework developers 用 implementation），
+    // 模块侧不引用它的任何类。之前多挂一条 service 是噪音，已删除。
+    compileOnly libs.libxposed.api
 }

@@ -134,7 +134,7 @@ fun FreezePage(
                     Text(text = "当前已冻结", color = cs.onSurface, fontSize = 15.sp)
                     Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        text = "${snap.actual.size} 个",
+                        text = "${snap.scopedFrozenCount} 个",
                         color = if (snap.actual.isEmpty()) cs.onSurfaceVariantSummary else cs.primary,
                         fontSize = 15.sp
                     )
@@ -143,7 +143,7 @@ fun FreezePage(
                 Text(
                     text = if (loading) "正在读取真实冻结状态…"
                     else if (snap.actual.isEmpty()) "系统当前没有任何被冻结的应用。"
-                    else "以上为系统真实状态，不是本页勾选结果。",
+                    else "本模块冻结 ${snap.scopedFrozenCount} 个，系统另有 ${snap.systemDisabledCount} 个应用被停用（含你手动停用的），不计入上数。",
                     color = cs.onSurfaceVariantSummary,
                     fontSize = 11.5.sp,
                     lineHeight = 16.sp
@@ -273,8 +273,8 @@ private fun RiskyConfirmDialog(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "此栏仅在 16.0.1 版本实验通过，其他版本可能会导致无法正常进系统。" +
-                        "请确保有救砖模块，并且能正常进 Recovery 后自行选择尝试。",
+                    text = "此栏仅在 16.0.1 版本实验通过。冻结作用在应用上，不涉及系统服务，" +
+                        "解除冻结只需回到本页关闭该分组，或直接重启设备。",
                     color = cs.onSurfaceVariantSummary,
                     fontSize = 12.5.sp,
                     lineHeight = 19.sp

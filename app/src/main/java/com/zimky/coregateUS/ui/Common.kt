@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalIndication
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,17 +86,27 @@ fun CoreCell(
     online: Boolean,
     freqText: String,
     color: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 非 null 时整块可点：首页用它实现「点一下封禁 / 再点一下解冻」。 */
+    onClick: (() -> Unit)? = null
 ) {
     val cs = MiuixTheme.colorScheme
     val cellBg = if (online) color.copy(alpha = 0.16f) else cs.surfaceContainerHigh
     val cellBorder = if (online) color.copy(alpha = 0.45f) else cs.outline
-
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(cellBg)
             .border(1.dp, cellBorder, RoundedCornerShape(12.dp))
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        // 沿用当前主题的涟漪，避免引入一套自绘反馈
+                        indication = LocalIndication.current,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onClick() }
+                } else Modifier
+            )
             .padding(vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
