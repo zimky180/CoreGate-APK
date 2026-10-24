@@ -82,11 +82,27 @@ object SysProbe {
         c.append("echo \"GNUM:\"; cat /sys/class/kgsl/kgsl-3d0/num_pwrlevels 2>/dev/null; ")
         c.append("echo \"GDEVF:\"; cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null; ")
         // daemon 与 state
-        c.append("echo \"STATEB:\"; ")
+        //
+        // ⚠️ 这里踩过一个很隐蔽的坑（缺陷 2「守护进程永远显示未运行」的根因）：
+        // 原来写的是 `echo "STATEB:";` 单独占一行，然后 if 里再 `echo "ALIVE:$PID"`，
+        // 于是 ALIVE:/DEAD: 落在 STATEB: 的「下一行」。
+        // 但 line() 的语义是「取标记后到行尾」，读到的是空串，
+        // startsWith("ALIVE:") 永远不成立 → daemonAlive 一直是构造默认值 false。
+        // 现在改成把结果「同行」输出在 DAEMON: 标记后面，line() 就能正确取到。
+        //
+        // ⚠️ 关键细节：标记本身必须用 `echo -n`（不换行），否则 DAEMON: 自己先换了一行，
+        // ALIVE:/DEAD: 又跑到下一行，line() 依旧取到空串 —— 这个坑踩过第二次。
+        // 但 Android 的 sh 是 mksh，`echo -n` 未必真能吞掉换行，所以在解析端
+        // 还保留了一条「全文正则兜底」，两条路任何一条通都能拿到正确结果。
+        c.append("echo -n \"DAEMON:\"; ")
         // 注意：shell 变量 $PID 必须转义成 ${'$'}PID，否则 Kotlin 会把它当成字符串模板，
         // 报 Unresolved reference 'PID'。
         c.append("PID=").append("${'$'}").append("(cat ").append(Paths.PID).append(" 2>/dev/null); ")
-        c.append("if [ -n \"${'$'}PID\" ] && kill -0 \"${'$'}PID\" 2>/dev/null; then echo \"ALIVE:${'$'}PID\"; else echo \"DEAD:${'$'}PID\"; fi; ")
+        c.append("if [ -n \"${'$'}PID\" ] && kill -0 \"${'$'}PID\" 2>/dev/null; then echo -n \"ALIVE:${'$'}PID\"; else echo -n \"DEAD:\"; echo -n \"${'$'}PID\"; fi; ")
+        // 上面用 echo -n 拼接成一行，最后补一个换行，避免和后面的 STATEF: 粘在一起
+        c.append("echo \"\"; ")
+        // 额外给一个冗余标记：把 pid 单独再输出一次，便于诊断区人类肉眼看
+        c.append("echo \"DPID:\"; cat ").append(Paths.PID).append(" 2>/dev/null; ")
         c.append("echo \"STATEF:\"; cat ").append(Paths.STATE).append(" 2>/dev/null; ")
         c.append("echo \"ENDPROBE:\"")
 
@@ -143,14 +159,27 @@ object SysProbe {
             val gnum = line(out, "GNUM")
             if (!gnum.isNullOrEmpty()) s.gpuNumLevels = num(gnum).toInt()
 
-            val stateb = line(out, "STATEB")
+            val stateb = line(out, "DAEMON")
             if (stateb != null && stateb.startsWith("ALIVE:")) {
                 s.daemonAlive = true
                 s.daemonPid = num(stateb.substring(6)).toInt()
             } else if (stateb != null && stateb.startsWith("DEAD:")) {
                 s.daemonAlive = false
                 s.daemonPid = num(stateb.substring(5)).toInt()
+            } else {
+                // 兜底：标记后没取到内容（某些 shell 的 echo -n 行为不一致、或被吞字），
+                // 退化为全文扫描。宁可多判一次，也不要再误报「未运行」。
+                val m = Regex("(ALIVE|DEAD):(\\d+)").find(out)
+                if (m != null) {
+                    s.daemonAlive = m.groupValues[1] == "ALIVE"
+                    s.daemonPid = m.groupValues[2].toIntOrNull() ?: -1
+                } else {
+                    s.dbg += " · 未取到 DAEMON 标记"
+                }
             }
+            // DPID 只用于诊断展示，正式判定以上面的结果为准
+            val dpid = line(out, "DPID")
+            if (dpid.isNullOrEmpty()) s.dbg += " · pid 文件为空"
 
             val st = line(out, "STATEF")
             if (st != null) {

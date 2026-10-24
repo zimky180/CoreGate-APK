@@ -43,12 +43,15 @@ import com.zimky.coregateUS.page.LockPage
 import com.zimky.coregateUS.page.PolicyPage
 import com.zimky.coregateUS.page.SettingsPage
 import com.zimky.coregateUS.ui.ToastHost
+import com.zimky.coregateUS.ui.component.RootGate
 import com.zimky.coregateUS.ui.component.FloatingBottomBar
 import com.zimky.coregateUS.ui.component.FloatingBottomBarItem
 import com.zimky.coregateUS.ui.theme.AppSettings
 import com.zimky.coregateUS.ui.theme.MiuixKernelSUTheme
 import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -69,7 +72,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MiuixKernelSUTheme(appSettings = remember { AppSettings() }) {
-                AppRoot()
+                // 开屏 root 门槛：拿不到 root 就根本进不来（拦截式，不是提醒式）。
+                // 放在主题内部，保证检测页与主界面共用同一套配色，不会闪一次白屏。
+                RootGate { AppRoot() }
             }
         }
     }
@@ -134,12 +139,17 @@ private fun AppRoot() {
     var lastRefreshAt by remember { mutableStateOf(0L) }
     var alive by remember { mutableStateOf(true) }
 
-    // 底栏 backdrop：底栏内部会自行与自己的 tabsBackdrop 合并，这里给一个即可。
-    // 注意这里必须用 rememberLayerBackdrop（非空），不能用 rememberBlurBackdrop ——
-    // 后者是给 BlurredBar 用的可空版本，而 FloatingBottomBar 的形参是非空 Backdrop。
-    // 这里的写法与 KSU ui/MainActivity.kt 完全一致。
-    // 关键：colorScheme 只能在 @Composable 上下文读取，而 rememberLayerBackdrop 的
-    // lambda 不是 @Composable，所以必须先在外层取出 surfaceColor 再闭包捕获。
+    // 底栏 backdrop。
+    //
+    // ⚠️ 这里曾经踩过一个坑：只创建 backdrop 而不给内容层挂 layerBackdrop，
+    // 底栏的 drawBackdrop 就取不到任何内容像素，blur/lens/vibrancy 全部失效，
+    // 底栏退化成一块不透明的纯色块 —— 也就是用户说的「不像 KSU，那条黑带子是死的」。
+    //
+    // KSU 的做法是两件套，缺一不可：
+    //   1) 内容层（HorizontalPager）挂 Modifier.layerBackdrop(backdrop)  ← 采集
+    //   2) 底栏交给 Scaffold 的 bottomBar 槽位，内部 drawBackdrop(backdrop) ← 消费
+    // 本项目第 1 步之前完全没做，第 2 步用的是裸 Box 手动 align。
+    // 现在两步都补齐：内容 Box 挂 layerBackdrop，底栏进 Scaffold 槽位。
     val surfaceColor = MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop {
         drawRect(surfaceColor)
@@ -239,81 +249,98 @@ private fun AppRoot() {
         }
     }
 
-    Box(
+    // 根布局：Scaffold(bottomBar = …)，与 KernelSU 官方 ui/MainActivity.kt 的
+    // `Scaffold(bottomBar = bottomBar) { pagerContent(innerPadding.calculateBottomPadding()) }`
+    // 逐条对齐。底栏进槽位有两个必须的理由：
+    //   1) 槽位横向撑满，FloatingBottomBar 内部的 width(IntrinsicSize.Min) 才能拿到确定宽度，
+    //      不会塌缩成圆（v2.2.0 初版「文字竖排」的缺陷就是缺这个约束）；
+    //   2) 浮层不再由业务代码手动 align，层级由 Scaffold 保证，backdrop 绘制次序稳定。
+    Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .background(MiuixTheme.colorScheme.background)
-    ) {
-        // 内容区：四页常驻，只显示当前那个。
-        // 铺满整屏、不留底部空白 —— 底栏是浮在上面的，内容可以流到它背后。
-        // 滚动内容自身的底部内边距由各页的 PAGE_BOTTOM_INSET 负责。
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
-            PageSlot(visible = currentTab == 0) {
-                LockPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
-            }
-            PageSlot(visible = currentTab == 1) {
-                PolicyPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
-            }
-            PageSlot(visible = currentTab == 2) {
-                FreqPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
-            }
-            PageSlot(visible = currentTab == 3) {
-                SettingsPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
-            }
-        }
-
-        // 悬浮液态底栏
-        //
-        // 宽度策略严格对齐 KernelSU 官方（BottomBarMiuix.kt + MainActivity 的 Scaffold(bottomBar=…)）：
-        //   - KSU 把底栏交给 Scaffold 的 bottomBar 槽位，该槽位横向撑满，所以组件内部的
-        //     width(IntrinsicSize.Min) 拿到的是「整屏宽 - 边距」这个确定值，不会塌缩；
-        //   - 这里用 Box 排版，等价写法是显式 fillMaxWidth() 撑满 + 左右 28.dp 边距；
-        //   - 底部间距照抄 KSU：有导航栏 inset 时取 8.dp + inset，否则 28.dp。
-        //   缺了 fillMaxWidth()，IntrinsicSize.Min 会把宽度收缩到最小值，
-        //   再被 CircleShape 裁成圆 → 文字竖排、圆圈极小（v2.2.0 初版实测到的缺陷）。
-        val navBottomInset = WindowInsets.navigationBars
-            .asPaddingValues()
-            .calculateBottomPadding()
-        val barBottomPadding = if (navBottomInset != 0.dp) 8.dp + navBottomInset else 28.dp
-        FloatingBottomBar(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(start = 28.dp, end = 28.dp, bottom = barBottomPadding),
-            selectedIndex = currentTab,
-            onSelected = { currentTab = it },
-            backdrop = backdrop,
-            tabsCount = TAB_TITLES.size,
-            isBlurEnabled = true
-        ) { activateTab ->
-            TAB_TITLES.forEachIndexed { i, title ->
-                FloatingBottomBarItem(
-                    selected = currentTab == i,
-                    onClick = { activateTab(i) },
-                    modifier = Modifier.defaultMinSize(minWidth = 76.dp)
-                ) {
-                    Text(
-                        text = title,
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Visible
-                    )
+            .background(MiuixTheme.colorScheme.background),
+        bottomBar = {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                val navBottomInset = WindowInsets.navigationBars
+                    .asPaddingValues()
+                    .calculateBottomPadding()
+                // 底部间距照抄 KSU：有导航栏 inset 时 8.dp + inset，否则 28.dp
+                val barBottomPadding = if (navBottomInset != 0.dp) 8.dp + navBottomInset else 28.dp
+                FloatingBottomBar(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(start = 28.dp, end = 28.dp, bottom = barBottomPadding),
+                    selectedIndex = currentTab,
+                    onSelected = { currentTab = it },
+                    backdrop = backdrop,
+                    tabsCount = TAB_TITLES.size,
+                    isBlurEnabled = true
+                ) { activateTab ->
+                    TAB_TITLES.forEachIndexed { i, title ->
+                        FloatingBottomBarItem(
+                            selected = currentTab == i,
+                            onClick = { activateTab(i) },
+                            modifier = Modifier.defaultMinSize(minWidth = 76.dp)
+                        ) {
+                            Text(
+                                text = title,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Visible
+                            )
+                        }
+                    }
                 }
             }
         }
+    ) { innerPadding ->
+        // 内容区：四页常驻，只显示当前那个。
+        //
+        // 缺陷 1 修复要点：内容层必须挂 Modifier.layerBackdrop(backdrop)。
+        // layerBackdrop 让本节点绘制时把像素写进 backdrop 的离屏缓冲，
+        // 底栏的 drawBackdrop(backdrop) 才能读到「底栏背后的界面」并做实时采样模糊。
+        // 之前缺了这一句，backdrop 里只有 rememberLayerBackdrop 那次 drawRect(surfaceColor)，
+        // 底栏于是永远是一块纯色，跟内容毫无互动 —— 这就是「不像 KSU」的根因。
+        //
+        // innerPadding 在这里只做「读取」而不用来缩进内容 —— 与 KSU 一致：
+        // 内容铺满全屏、流到底栏背后，底栏的 blur 才有东西可采。
+        // 各页自己的滚动内容由 PAGE_BOTTOM_INSET 兜住，不会被底栏遮住。
+        // 用 calculateBottomPadding() 取值即可，避免「取了 innerPadding 却不用」的告警。
+        @Suppress("UNUSED_VARIABLE")
+        val bottomPad = innerPadding.calculateBottomPadding()
 
-        // 轻提示层：盖在内容与底栏之上，顶部居中淡入淡出
-        ToastHost(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 12.dp)
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdrop(backdrop)
+                    .statusBarsPadding()
+            ) {
+                PageSlot(visible = currentTab == 0) {
+                    LockPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
+                }
+                PageSlot(visible = currentTab == 1) {
+                    PolicyPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
+                }
+                PageSlot(visible = currentTab == 2) {
+                    FreqPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
+                }
+                PageSlot(visible = currentTab == 3) {
+                    SettingsPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
+                }
+            }
+
+            // 轻提示层：盖在内容与底栏之上，顶部居中淡入淡出
+            ToastHost(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp)
+            )
+        }
     }
+
 }
