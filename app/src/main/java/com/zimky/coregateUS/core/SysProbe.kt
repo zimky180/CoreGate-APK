@@ -119,11 +119,34 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
         // ALIVE:/DEAD: 又跑到下一行，line() 依旧取到空串 —— 这个坑踩过第二次。
         // 但 Android 的 sh 是 mksh，`echo -n` 未必真能吞掉换行，所以在解析端
         // 还保留了一条「全文正则兜底」，两条路任何一条通都能拿到正确结果。
+        // ⚠️ 缺陷 4「守护进程永远显示未运行」的第二个根因（2026-10 实测确认）：
+        // 只信 daemon.pid 是不够的 —— 该文件会被「一键清理残留」、系统清理、目录重建等
+        // 各种操作删掉，而守护进程本身还活得好好的。此时 PID="" → 旧分支输出 "DEAD:"，
+        // 后面连数字都没有，正则 (\d+) 也匹配不上，于是被判成「未运行」。
+        // 修复思路：pid 文件只是「快速通道」，取不到就退化为 /proc 全量扫描——
+        // 直接找 cmdline 里带 CoreGate/service.sh 的进程，这才是进程是否存活的唯一真相。
         c.append("echo -n \"DAEMON:\"; ")
-        // 注意：shell 变量 $PID 必须转义成 ${'$'}PID，否则 Kotlin 会把它当成字符串模板，
-        // 报 Unresolved reference 'PID'。
-        c.append("PID=").append("${'$'}").append("(cat ").append(Paths.PID).append(" 2>/dev/null); ")
-        c.append("if [ -n \"${'$'}PID\" ] && kill -0 \"${'$'}PID\" 2>/dev/null; then echo -n \"ALIVE:${'$'}PID\"; else echo -n \"DEAD:\"; echo -n \"${'$'}PID\"; fi; ")
+        // Kotlin 字符串里裸 $ 会被当模板起始 → 编译期 Unresolved reference。
+        // 用 D 变量持有真正的 $ 字符，拼进 shell 源码里。
+        val D = "\u0024"
+        c.append("PID=").append(D).append("(cat ").append(Paths.PID).append(" 2>/dev/null | tr -d ' \\n\\r\\t'); ")
+        c.append("if [ -n \"").append(D).append("PID\" ] && kill -0 \"").append(D).append("PID\" 2>/dev/null; then ")
+        c.append("echo -n \"ALIVE:").append(D).append("PID\"; else ")
+        // pid 文件缺失/失效 → 找真正的守护进程。
+        // 先 ps 筛（快，日志里的 27281 就是这么发现的），失败再遍历 /proc/cmdline 兜底。
+        // ⚠️ 绝不能写成 SPID=$($(...) ...)：$(( 会被 shell 当成算术展开，语法直接炸。
+        //    这里先落到 PS_OUT 变量，再单独 pipe 处理，彻底避开 $(( 歧义。
+        c.append("SPID=\"\"; ")
+        c.append("PS_OUT=\"").append(D).append("(ps -A -o PID,ARGS 2>/dev/null || ps -A 2>/dev/null)\"; ")
+        c.append("SPID=\"").append(D).append("(echo \"").append(D).append("PS_OUT\" | grep 'CoreGate/service.sh' ")
+            .append("| grep -v grep | head -n 1 | tr -s ' ' | cut -d' ' -f1)\"; ")
+        c.append("if [ -z \"").append(D).append("SPID\" ]; then for d in /proc/[0-9]*; do ")
+        c.append("cl=\"").append(D).append("(cat ").append(D).append("d/cmdline 2>/dev/null | tr '\\000' ' ')\"; ")
+        c.append("case \"").append(D).append("cl\" in *CoreGate/service.sh*) SPID=")
+            .append(D).append("{d#/proc/}; break;; esac; ")
+        c.append("done; fi; ")
+        c.append("if [ -n \"").append(D).append("SPID\" ] && kill -0 \"").append(D).append("SPID\" 2>/dev/null; then ")
+        c.append("echo -n \"ALIVE:").append(D).append("SPID\"; else echo -n \"DEAD:0\"; fi; fi; ")
         // 上面用 echo -n 拼接成一行，最后补一个换行，避免和后面的 STATEF: 粘在一起
         c.append("echo \"\"; ")
         // 额外给一个冗余标记：把 pid 单独再输出一次，便于诊断区人类肉眼看
@@ -192,26 +215,32 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
             if (!gnum.isNullOrEmpty()) s.gpuNumLevels = num(gnum).toInt()
 
             val stateb = line(out, "DAEMON")
-            if (stateb != null && stateb.startsWith("ALIVE:")) {
+            // DEAD:0 里的 0 是占位符（不是真 pid），要还原成「未知 = -1」
+            val aliveFromMark = stateb != null && stateb.startsWith("ALIVE:")
+            if (aliveFromMark) {
                 s.daemonAlive = true
-                s.daemonPid = num(stateb.substring(6)).toInt()
+                s.daemonPid = num(stateb!!.substring(6)).toInt()
             } else if (stateb != null && stateb.startsWith("DEAD:")) {
                 s.daemonAlive = false
-                s.daemonPid = num(stateb.substring(5)).toInt()
+                s.daemonPid = -1
             } else {
                 // 兜底：标记后没取到内容（某些 shell 的 echo -n 行为不一致、或被吞字），
                 // 退化为全文扫描。宁可多判一次，也不要再误报「未运行」。
                 val m = Regex("(ALIVE|DEAD):(\\d+)").find(out)
                 if (m != null) {
                     s.daemonAlive = m.groupValues[1] == "ALIVE"
-                    s.daemonPid = m.groupValues[2].toIntOrNull() ?: -1
+                    val v = m.groupValues[2].toIntOrNull() ?: 0
+                    s.daemonPid = if (s.daemonAlive) v else -1
                 } else {
                     s.dbg += " · 未取到 DAEMON 标记"
                 }
             }
-            // DPID 只用于诊断展示，正式判定以上面的结果为准
-            val dpid = line(out, "DPID")
-            if (dpid.isNullOrEmpty()) s.dbg += " · pid 文件为空"
+            // pid 文件为空/失效时不再报错——守护进程可能通过 /proc 兜底找到了，
+            // 只在「判定为未运行」且 pid 文件确实为空时给一句诊断。
+            if (!s.daemonAlive) {
+                val dpid = line(out, "DPID").orEmpty().trim()
+                if (dpid.isEmpty()) s.dbg += " · pid 文件为空且未扫到进程"
+            }
 
             val st = line(out, "STATEF")
             if (st != null) {

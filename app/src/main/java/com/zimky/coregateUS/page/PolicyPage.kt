@@ -39,7 +39,9 @@ import com.zimky.coregateUS.core.SysProbe
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.Gap
 import com.zimky.coregateUS.ui.HGap
+import com.zimky.coregateUS.ui.HairLine
 import com.zimky.coregateUS.ui.HintText
+import com.zimky.coregateUS.ui.NavRow
 import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
 import com.zimky.coregateUS.ui.SubText
@@ -67,7 +69,14 @@ fun PolicyPage(
     packagesRaw: String,
     sh: RootShell,
     onRefresh: () -> Unit,
-    save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit
+    save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit,
+    /** 冻结管理二级页里的「已冻结」数量快照，null 表示还没读到 */
+    frozenCount: Int?,
+    /** 墓碑是否真的在生效，null 表示还没探测出来 */
+    tombAlive: Boolean?,
+    onOpenFreeze: () -> Unit,
+    onOpenSpoof: () -> Unit,
+    onOpenTomb: () -> Unit
 ) {
     val cs = MiuixTheme.colorScheme
     val s = snapshot
@@ -77,6 +86,19 @@ fun PolicyPage(
     val allOnline = total > 0 && onlineCount == total
     val lockedCount = (total - onlineCount).coerceAtLeast(0)
     val pkg = s?.statePkg?.takeIf { it.isNotBlank() }
+
+    // 冻结摘要：与主页卡片三严格同一套措辞，用户在两页看到同一件事必须读到同一句话
+    val freezeSummary = when {
+        frozenCount == null -> "还没探到"
+        frozenCount == 0 -> "当前没有冻结任何服务"
+        else -> "已冻结 $frozenCount 个服务"
+    }
+    // 墓碑摘要：同上，与主页卡片二对齐
+    val tombSummary = when (tombAlive) {
+        null -> "还没探到"
+        true -> "有工具在冻结后台，正在生效"
+        false -> "没看到有东西在冻结后台"
+    }
 
     // 输入框文本与焦点状态
     var intervalText by remember { mutableStateOf(cfg.pollInterval.toString()) }
@@ -236,6 +258,35 @@ fun PolicyPage(
                     Gap(10.dp)
                     SubText("已封锁 $lockedCount 个核心以节省功耗。")
                 }
+            }
+        }
+
+        // ── 卡片五：更多策略（点进各自的二级页）───────────────────────
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(text = "更多策略", color = cs.onSurface, fontSize = 16.sp)
+                Gap(4.dp)
+
+                NavRow(
+                    title = "冻结管理",
+                    summary = freezeSummary,
+                    onClick = onOpenFreeze
+                )
+                HairLine()
+                NavRow(
+                    title = "伪造机型",
+                    summary = "让游戏以为这是别的手机",
+                    onClick = onOpenSpoof
+                )
+                HairLine()
+                NavRow(
+                    title = "墓碑",
+                    summary = tombSummary,
+                    onClick = onOpenTomb
+                )
+
+                Gap(10.dp)
+                HintText("以上三项都默认关闭，改之前请先看清各自页面的说明。")
             }
         }
 

@@ -46,6 +46,18 @@ data class CoreConfig(
     var limitFreq: Boolean = false,
     /** 录屏 / 相机自动恢复 */
     var captureBoost: Boolean = false,
+    /** 冻结：日志上报（六组，默认全关，由用户自己开） */
+    var freezeGrpLog: Boolean = false,
+    /** 冻结：媒体扫描 */
+    var freezeGrpMedia: Boolean = false,
+    /** 冻结：云同步 */
+    var freezeGrpCloud: Boolean = false,
+    /** 冻结：诊断上报 */
+    var freezeGrpDiag: Boolean = false,
+    /** 冻结：广告服务 */
+    var freezeGrpAd: Boolean = false,
+    /** 冻结：系统非必要组件（高风险组） */
+    var freezeGrpSelf: Boolean = false,
     /** 真机上确实读到了文件的标记，用于诊断页。 */
     var loaded: Boolean = false,
     /**
@@ -73,6 +85,13 @@ data class CoreConfig(
         put("poll_interval", clampInterval(pollInterval))
         put("limit_freq", limitFreq)
         put("capture_boost", captureBoost)
+        // 冻结六组：键名必须与 service.sh 的 freeze_$1 拼出来的完全一致
+        put("freeze_grp_log", freezeGrpLog)
+        put("freeze_grp_media", freezeGrpMedia)
+        put("freeze_grp_cloud", freezeGrpCloud)
+        put("freeze_grp_diag", freezeGrpDiag)
+        put("freeze_grp_ad", freezeGrpAd)
+        put("freeze_grp_self", freezeGrpSelf)
     }
 
     fun toJsonString(): String = toJson().toString()
@@ -99,7 +118,9 @@ data class CoreConfig(
         /** App 自己负责写回的键，其余键一律原样保留。 */
         private val MANAGED_KEYS = setOf(
             "enabled", "lock_cores", "disable_core_ctl", "no_lock_charging",
-            "poll_interval", "limit_freq", "capture_boost"
+            "poll_interval", "limit_freq", "capture_boost",
+            "freeze_grp_log", "freeze_grp_media", "freeze_grp_cloud",
+            "freeze_grp_diag", "freeze_grp_ad", "freeze_grp_self"
         )
 
         fun clampInterval(v: Int): Int = when {
@@ -123,6 +144,13 @@ data class CoreConfig(
                 c.pollInterval = clampInterval(o.optInt("poll_interval", 30))
                 c.limitFreq = o.optBoolean("limit_freq", false)
                 c.captureBoost = o.optBoolean("capture_boost", false)
+                // 冻结六组，默认全关；用户自己开过才为 true
+                c.freezeGrpLog = o.optBoolean("freeze_grp_log", false)
+                c.freezeGrpMedia = o.optBoolean("freeze_grp_media", false)
+                c.freezeGrpCloud = o.optBoolean("freeze_grp_cloud", false)
+                c.freezeGrpDiag = o.optBoolean("freeze_grp_diag", false)
+                c.freezeGrpAd = o.optBoolean("freeze_grp_ad", false)
+                c.freezeGrpSelf = o.optBoolean("freeze_grp_self", false)
                 // 记住 App 不认识的键（auto_lock_count 等），保存时原样写回
                 c.rawExtra = snapshotUnknownKeys(o)
                 c.loaded = true
@@ -138,6 +166,12 @@ data class CoreConfig(
             c.pollInterval = clampInterval(grabInt(s, "poll_interval", 30))
             c.limitFreq = grabBool(s, "limit_freq", false)
             c.captureBoost = grabBool(s, "capture_boost", false)
+            c.freezeGrpLog = grabBool(s, "freeze_grp_log", false)
+            c.freezeGrpMedia = grabBool(s, "freeze_grp_media", false)
+            c.freezeGrpCloud = grabBool(s, "freeze_grp_cloud", false)
+            c.freezeGrpDiag = grabBool(s, "freeze_grp_diag", false)
+            c.freezeGrpAd = grabBool(s, "freeze_grp_ad", false)
+            c.freezeGrpSelf = grabBool(s, "freeze_grp_self", false)
             c.loaded = true
             if (c.lockCores.isBlank()) c.lockCores = "auto"
             return c

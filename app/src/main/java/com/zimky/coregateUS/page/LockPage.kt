@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -43,14 +44,28 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 第 1 页：锁核运行状态 + 核心状态 + 锁核建议 + 手动封锁。
+ * 第 1 页：锁核运行状态 + 冻结与墓碑摘要 + 核心状态 + 锁核建议 + 手动封锁。
  *
  * 行为契约与旧 LockPage.java 完全一致：
  *  - 状态一律由传入的 [snapshot] 单向推导，本页绝不主动发 root；
  *  - 唯一的写操作是「封锁高频核心」，且失败后不会自动重试，避免反复惊动安全机制。
  *
+ * 关于 [frozenCount] 与 [tombAlive]：这两个值由 MainActivity 的 probeFreeze() 统一探测后
+ * 下传，本页只负责显示，绝不自己发命令 —— 否则每次切回首页都多一次 root，
+ * 用户连续操作时容易被安全机制判为入侵。
+ *
+ * 三态语义（务必不要用 false 兜底 null）：
+ *  - null      = 还没探到（首次进入或探测进行中）
+ *  - 0 / false = 探到了，结果是「没有」
+ * 两者在界面上必须显示成完全不同的文字，否则用户会把「不知道」当成「没有」。
+ *
  * 视觉：卡片统一用 Miuix [Card] + [BasicComponent]，状态用 [Badge]，
  * 与 KernelSU 管理器首页保持同一套组件语言。
+ *
+ * @param frozenCount  本模块冻结中且系统确实已冻结的项数；null 表示尚未探明
+ * @param tombAlive    是否有非本模块的工具正在冻结后台；null 表示尚未探明
+ * @param onOpenFreeze 跳转冻结管理二级页
+ * @param onOpenTomb   跳转墓碑探测二级页
  */
 @Composable
 fun LockPage(
@@ -59,7 +74,11 @@ fun LockPage(
     packagesRaw: String,
     sh: RootShell,
     onRefresh: () -> Unit,
-    save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit
+    save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit,
+    frozenCount: Int? = null,
+    tombAlive: Boolean? = null,
+    onOpenFreeze: () -> Unit = {},
+    onOpenTomb: () -> Unit = {}
 ) {
     val cs = MiuixTheme.colorScheme
     val s = snapshot
@@ -139,7 +158,106 @@ fun LockPage(
             }
         }
 
-        // ── 卡片二：核心状态 ─────────────────────────────────────────
+        // ── 卡片二：墓碑状态（独立一框）───────────────────────────────
+        // 用户要求主页「一眼看见墓碑是不是真生效」，所以墓碑和冻结各自独占一个框，
+        // 不再挤在同一张卡里 —— 挤在一起时两行小字很容易被当成一段说明文字划过去。
+        // 数值全部只读，本页不做任何探测，数据来自 MainActivity.probeFreeze()。
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "墓碑",
+                        color = cs.onSurface,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    // 右上角徽标：没探到就不挂色，探到了才表态
+                    when (tombAlive) {
+                        null -> StateBadge("还没探到", cs.onSurfaceVariantSummary)
+                        true -> StateBadge("正在生效", Semantic.OK)
+                        false -> StateBadge("没有生效", cs.onSurfaceVariantSummary)
+                    }
+                }
+                Gap(8.dp)
+                Text(
+                    text = when (tombAlive) {
+                        null -> "正在读取后台状态，稍等一下"
+                        true -> "有工具在冻结后台，正在生效"
+                        false -> "没看到有东西在冻结后台"
+                    },
+                    color = cs.onSurface,
+                    fontSize = 14.sp,
+                    lineHeight = 19.sp
+                )
+                Gap(10.dp)
+                HairLine()
+                Gap(10.dp)
+                TextButton(
+                    text = "查看墓碑探测",
+                    onClick = onOpenTomb,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // ── 卡片三：冻结状态（独立一框）───────────────────────────────
+        // 数字取 FreezeData.Snapshot.effectiveCount —— 「本模块冻了、且系统里确实冻上了」
+        // 的交集，不是「打算冻几个」。用户要看的是真冻没冻上，所以必须是前者。
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "冻结",
+                        color = cs.onSurface,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    when {
+                        frozenCount == null -> StateBadge("还没探到", cs.onSurfaceVariantSummary)
+                        frozenCount == 0 -> StateBadge("没有冻结", cs.onSurfaceVariantSummary)
+                        else -> StateBadge("已冻结 $frozenCount 个", Semantic.OK)
+                    }
+                }
+                Gap(8.dp)
+                Text(
+                    text = when {
+                        frozenCount == null -> "正在读取冻结状态，稍等一下"
+                        frozenCount == 0 -> "当前没有冻结任何服务"
+                        else -> "已冻结 $frozenCount 个服务"
+                    },
+                    color = cs.onSurface,
+                    fontSize = 14.sp,
+                    lineHeight = 19.sp
+                )
+
+                // 逐项明细本页拿不到（那需要 --freeze-status 的 actual 段，只有二级页真正解析），
+                // 所以这里只给入口，不臆造列表。
+                Gap(6.dp)
+                Text(
+                    text = "每组每个包是否真的冻结成功，点进去逐项看。",
+                    color = cs.onSurfaceVariantSummary,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
+                )
+                Gap(10.dp)
+                HairLine()
+                Gap(10.dp)
+                TextButton(
+                    text = "查看冻结明细",
+                    onClick = onOpenFreeze,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColorsPrimary()
+                )
+            }
+        }
+
+        // ── 卡片四：核心状态 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text(
@@ -203,7 +321,7 @@ fun LockPage(
             }
         }
 
-        // ── 卡片三：锁核建议 ─────────────────────────────────────────
+        // ── 卡片五：锁核建议 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text(text = "锁核建议", color = cs.onSurface, fontSize = 16.sp)
@@ -245,7 +363,7 @@ fun LockPage(
             }
         }
 
-        // ── 卡片四：手动操作 ─────────────────────────────────────────
+        // ── 卡片六：手动操作 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text(text = "手动操作", color = cs.onSurface, fontSize = 16.sp)

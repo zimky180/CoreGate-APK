@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -162,6 +164,43 @@ fun SubText(text: String, modifier: Modifier = Modifier, color: Color = MiuixThe
 @Composable
 fun HintText(text: String, modifier: Modifier = Modifier, color: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary) {
     Text(text = text, color = color, fontSize = 11.5.sp, lineHeight = 16.sp, modifier = modifier)
+}
+
+/**
+ * 一行可点击的二级页入口：左边标题，右边一句现状摘要 + 箭头。
+ *
+ * 只负责「看上去能点、点了有反馈」，真正的跳转由调用方在 onClick 里做。
+ * 箭头用文字「›」而不是图标，避免为了一个符号多引一套图标依赖。
+ */
+@Composable
+fun NavRow(
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cs = MiuixTheme.colorScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = title, color = cs.onSurface, fontSize = 15.sp)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = summary,
+            color = cs.onSurfaceVariantSummary,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(text = "›", color = cs.onSurfaceVariantSummary, fontSize = 18.sp)
+    }
 }
 
 /** 卡片内小标题，14sp 强调色。用于分区名。 */

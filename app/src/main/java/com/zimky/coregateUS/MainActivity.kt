@@ -7,15 +7,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
@@ -36,12 +43,16 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zimky.coregateUS.core.CoreConfig
+import com.zimky.coregateUS.core.FreezeData
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
 import com.zimky.coregateUS.page.FreqPage
+import com.zimky.coregateUS.page.FreezePage
 import com.zimky.coregateUS.page.LockPage
 import com.zimky.coregateUS.page.PolicyPage
 import com.zimky.coregateUS.page.SettingsPage
+import com.zimky.coregateUS.page.SpoofPage
+import com.zimky.coregateUS.page.TombPage
 import com.zimky.coregateUS.ui.ToastHost
 import com.zimky.coregateUS.ui.component.RootGate
 import com.zimky.coregateUS.ui.component.FloatingBottomBar
@@ -49,6 +60,7 @@ import com.zimky.coregateUS.ui.component.FloatingBottomBarItem
 import com.zimky.coregateUS.ui.theme.AppSettings
 import com.zimky.coregateUS.ui.theme.MiuixKernelSUTheme
 import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -85,6 +97,17 @@ private const val POLL_MS = 8_000L
 
 /** 手动刷新冷却，防抖。 */
 private const val MIN_REFRESH_GAP = 1_200L
+
+/**
+ * 二级页的三种形态。用字符串而不是 sealed class，是为了能直接存进 rememberSaveable，
+ * 旋转屏幕后仍停在同一页。
+ */
+private object SubPage {
+    const val NONE = ""
+    const val FREEZE = "freeze"
+    const val SPOOF = "spoof"
+    const val TOMB = "tomb"
+}
 
 /** 底栏四栏文案。 */
 private val TAB_TITLES = listOf("锁核", "策略", "限频", "设置")
@@ -132,6 +155,14 @@ private fun AppRoot() {
     var packagesRaw by remember { mutableStateOf("") }
     var snapshot by remember { mutableStateOf<SysProbe.Snapshot?>(null) }
     var currentTab by rememberSaveable { mutableStateOf(0) }
+
+    // 当前展开的二级页；SubPage.NONE 表示停在四栏主界面
+    var subPage by rememberSaveable { mutableStateOf(SubPage.NONE) }
+
+    // 策略页要显示的「冻结了多少个」与「墓碑在不在」，由二级页与后台探测回报。
+    // null = 还没探到（主页与策略页都会显示「还没探到」），0 是有效结果，不能和 null 混。
+    var frozenCount by remember { mutableStateOf<Int?>(null) }
+    var tombAlive by remember { mutableStateOf<Boolean?>(null) }
 
     // 刷新：串行 + 合并
     var refreshing by remember { mutableStateOf(false) }
@@ -187,12 +218,42 @@ private fun AppRoot() {
         }
     }
 
+    /**
+     * 探一次冻结与墓碑的实况，喂给策略页的摘要。
+     *
+     * 只跑一条命令：`--freeze-status`。它输出的 actual 段是「系统里当前真被挂起的包」，
+     * applied 段是「本模块自己冻的」。两个差集非空 = 有别的工具在冻后台，
+     * 也就等于墓碑在生效 —— 这就是墓碑页那套判断的同一份数据，
+     * 所以这里顺手把 tombAlive 也一起算掉，不必等用户点进墓碑页才知道。
+     *
+     * 为什么不在 refresh() 里做：refresh 走的是 SysProbe，它读的是 sysfs 与
+     * /data 下的状态文件，实现上完全独立；把冻结状态塞进同一个回调会让
+     * 「一次刷新 = 两次 root」：用户狂点刷新时更容易被安全机制判为入侵。
+     * 这里是独立的、低频的路径（只在启动与冻结页改动后调用）。
+     */
+    fun probeFreeze() {
+        if (!alive) return
+        RootShell.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { _, out, _ ->
+            // exec 的 stdout 已经回主线程了，但脚本内部 pm 的写入可能还没落完
+            main.postDelayed({
+                val snap = FreezeData.parse(out)
+                if (snap.applied.isEmpty() && snap.actual.isEmpty()) {
+                    // 一条都没读到 = 脚本没给结果（未授权 / 模块未装），保持 null 不伪造 0
+                    return@postDelayed
+                }
+                frozenCount = snap.effectiveCount
+                tombAlive = snap.actual.keys.any { it !in snap.applied.keys }
+            }, 350L)
+        }
+    }
+
     /** 读配置。root 授权弹窗被拒时 loaded 会是 false，需要能重试。 */
     fun loadConfig() {
         CoreConfig.load(RootShell) { c, pkgs, _ ->
             cfg = c
             packagesRaw = pkgs.orEmpty()
             refresh(false)
+            probeFreeze()
         }
     }
 
@@ -241,6 +302,8 @@ private fun AppRoot() {
                 cfg = newCfg.copy(loaded = true)
                 if (packages != null) packagesRaw = packages
                 main.postDelayed({ refresh(false) }, 400L)
+                // 配置可能正好改了冻结分组，摘要要跟着变，否则策略页还停在旧数字上
+                main.postDelayed({ probeFreeze() }, 900L)
             }
             done?.invoke(
                 ok,
@@ -320,10 +383,35 @@ private fun AppRoot() {
                     .statusBarsPadding()
             ) {
                 PageSlot(visible = currentTab == 0) {
-                    LockPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
+                    // 冻结与墓碑摘要由 probeFreeze() 统一探测后下传，LockPage 自己不发 root。
+                    // 入口和策略页指向同一批二级页，用户在哪一栏都能进。
+                    LockPage(
+                        cfg = cfg,
+                        snapshot = snapshot,
+                        packagesRaw = packagesRaw,
+                        sh = RootShell,
+                        onRefresh = { refresh(true) },
+                        save = ::save,
+                        frozenCount = frozenCount,
+                        tombAlive = tombAlive,
+                        onOpenFreeze = { subPage = SubPage.FREEZE },
+                        onOpenTomb = { subPage = SubPage.TOMB }
+                    )
                 }
                 PageSlot(visible = currentTab == 1) {
-                    PolicyPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
+                    PolicyPage(
+                        cfg = cfg,
+                        snapshot = snapshot,
+                        packagesRaw = packagesRaw,
+                        sh = RootShell,
+                        onRefresh = { refresh(true) },
+                        save = ::save,
+                        frozenCount = frozenCount,
+                        tombAlive = tombAlive,
+                        onOpenFreeze = { subPage = SubPage.FREEZE },
+                        onOpenSpoof = { subPage = SubPage.SPOOF },
+                        onOpenTomb = { subPage = SubPage.TOMB }
+                    )
                 }
                 PageSlot(visible = currentTab == 2) {
                     FreqPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
@@ -331,6 +419,71 @@ private fun AppRoot() {
                 PageSlot(visible = currentTab == 3) {
                     SettingsPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
                 }
+
+                // 二级页：盖在四个常驻页之上。
+                //
+                // 为什么不塞进 PageSlot：
+                //   四个 PageSlot 的 contract 是「常驻不销毁、只切透明度」，
+                //   把二级页塞进去等于让它在切页时被组合/弃置，破坏该 constraint。
+                //   所以这里在 PageSlot 之外单独一层，用 zIndex(2f) 压住可见页（可见页是 1f）。
+                //
+                // 为什么挂 statusBarsPadding：
+                //   二级页是独立全屏层，不经过外层那个挂了 statusBarsPadding 的 Box，
+                //   不自己补一下标题就会顶进状态栏。
+                if (subPage != SubPage.NONE) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(2f)
+                            .statusBarsPadding()
+                    ) {
+                        when (subPage) {
+                            SubPage.FREEZE -> FreezePage(
+                                cfg = cfg,
+                                sh = RootShell,
+                                onBack = { subPage = SubPage.NONE },
+                                onChanged = {
+                                    // 冻结页每次增删都要把数字同步回策略页，
+                                    // 否则用户返回后摘要还停在进来之前的旧值
+                                    refresh(true)
+                                    probeFreeze()
+                                }
+                            )
+                            // 伪造机型页：只读展示系统当前报的三项属性，不写任何东西，
+                            // 所以不需要 cfg —— 签名里也没有它。
+                            SubPage.SPOOF -> SpoofPage(
+                                sh = RootShell,
+                                onBack = { subPage = SubPage.NONE }
+                            )
+                            // 墓碑页：本页自己探一次，探到的结果通过 onProbed 回填 tombAlive，
+                            // 这样返回策略页时摘要会跟着变成「正在生效 / 没有生效」。
+                            SubPage.TOMB -> TombPage(
+                                sh = RootShell,
+                                tombAlive = tombAlive,
+                                onProbed = { ok, _ -> tombAlive = ok },
+                                onBack = { subPage = SubPage.NONE }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 读取失败提示条：只在配置真的读不到时出现。
+            //
+            // 对应需求：「如果配置无法读取，就多写个提示请检查是否给予 root 权限不就行了」。
+            // 这是「首次授权已完成、但后来 root 被撤销」的唯一反馈通道 ——
+            // 因为第一屏按设计永不再出现，不能再把用户踢回开屏页。
+            //
+            // 判定依据直接用 cfg.loaded（CoreConfig.load 在 su 失败 / 配置为空时会给 false），
+            // 不额外探测 root，避免多一次 su 调用被判为入侵。
+            // 授权恢复后下一次 ON_RESUME 自愈重试成功，loaded 变 true，提示条自动消失。
+            if (!cfg.loaded) {
+                NoRootHint(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 12.dp, start = 20.dp, end = 20.dp)
+                )
             }
 
             // 轻提示层：盖在内容与底栏之上，顶部居中淡入淡出
@@ -343,4 +496,55 @@ private fun AppRoot() {
         }
     }
 
+}
+/**
+ * 主页内的「配置读取失败」提示条。
+ *
+ * 设计定位（对应用户原话）：
+ *   「首次打开后就是完完全全的告诉你请输入 root，然后首次授予完之后第一屏永不再重现。
+ *     如果配置无法读取，就多写个提示请检查是否给予 root 权限不就行了」
+ *
+ * 所以本组件承担的是「首次授权已完成、后来 root 被撤销」的**唯一**反馈通道：
+ * 第一屏按设计永不再出现，撤销后不能把用户踢回开屏页，只能在这里点一句。
+ *
+ * 判定依据来自外部（MainActivity 用 cfg.loaded），本组件只负责显示，
+ * 不自己探测 root、不自己发 su —— 探测越多越容易被系统安全机制误判为入侵。
+ *
+ * 恢复路径：用户在 KernelSU / Magisk 里重新授予后，回到前台触发 ON_RESUME，
+ * MainActivity 里已有的 `if (!cfg.loaded) loadConfig()` 会自愈重试，
+ * 成功则 loaded=true，本提示条自动消失，不需要「重试」按钮。
+ *
+ * 视觉对齐 RootGate 的 GateCard：同一张 Card、同一套字号与配色，
+ * 避免「提示条」与「第一屏」像两个不同的 App。
+ */
+@Composable
+private fun NoRootHint(modifier: Modifier = Modifier) {
+    val cs = MiuixTheme.colorScheme
+    Card(modifier = modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            // 左侧强调竖条：一眼看出这是需要处理的状态，而不是普通说明
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(34.dp)
+                    .clip(CircleShape)
+                    .background(cs.primary)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "配置读取失败",
+                    color = cs.primary,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "请检查是否已给予 CoreGate root 权限。授权后回到前台会自动重新读取，无需重启。",
+                    color = cs.onSurfaceVariantSummary,
+                    fontSize = 11.5.sp,
+                    lineHeight = 17.sp
+                )
+            }
+        }
+    }
 }
