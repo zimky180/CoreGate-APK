@@ -8,11 +8,83 @@
       KernelSU / Magisk 是在 su 进程里授权，跟 APK 清单无关。
     - QUERY_ALL_PACKAGES 也不需要：包名列表是纯文本，不做应用枚举。
 
-  exported=true 且带 LAUNCHER，是让桌面能点开。
-  taskAffinity 保持默认，跟模块管理器互不影响。
--->
+  但冻结管理页必须显示应用名（用户要求：「你别光写包名，把名字也写上，
+  要不然用户无法正常分析要不要冻结」），所以需要能查到具体包的 label。
+
+  这里用最窄的做法：不申请 QUERY_ALL_PACKAGES（那属于「枚举全部应用」，
+  会被应用商店判为敏感），而是在 <queries> 里只点名冻结表里那 60 来个包。
+  Android 11+ 的包可见性规则会因此只对这批包放行，getApplicationLabel
+  就能取到中文名，权限面上依然克制。
+  -->
 <!-- AGP 9 起 manifest 的 package 属性已废弃并被忽略，包名统一由 build.gradle 的 namespace 决定。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 只对冻结表内的包申请可见性，用于读取应用名与图标。 -->
+    <queries>
+        <package android:name="com.oplus.logkit" />
+        <package android:name="com.oplus.onetrace" />
+        <package android:name="com.android.traceur" />
+        <package android:name="com.coloros.karaoke" />
+        <package android:name="com.oplus.audio.effectcenter" />
+        <package android:name="com.oplus.mediaturbo" />
+        <package android:name="com.oplus.smartmediacontroller" />
+        <package android:name="com.heytap.cloud" />
+        <package android:name="com.android.sharedstoragebackup" />
+        <package android:name="com.android.wallpaperbackup" />
+        <package android:name="com.oplus.appsense" />
+        <package android:name="com.oplus.motionsense" />
+        <package android:name="com.oplus.audiomonitor" />
+        <package android:name="com.heytap.mcs" />
+        <package android:name="com.heytap.openid" />
+        <package android:name="com.heytap.tas" />
+        <package android:name="com.heytap.colorfulengine" />
+        <package android:name="com.heytap.pictorial" />
+        <package android:name="com.heytap.speechassist" />
+        <package android:name="com.microsoft.appmanager" />
+        <package android:name="com.newcall" />
+        <package android:name="com.oplus.acc.gac" />
+        <package android:name="com.oplus.aicall" />
+        <package android:name="com.oplus.aimemory" />
+        <package android:name="com.oplus.aiwidgets" />
+        <package android:name="com.oplus.aiwriter" />
+        <package android:name="com.oplus.apprecover" />
+        <package android:name="com.oplus.cardigitalkey" />
+        <package android:name="com.oplus.cast" />
+        <package android:name="com.oplus.cellularqoe" />
+        <package android:name="com.oplus.customize.coreapp" />
+        <package android:name="com.oplus.deepthinker" />
+        <package android:name="com.oplus.encryption" />
+        <package android:name="com.oplus.keyguard.clock.base" />
+        <package android:name="com.oplus.keyguard.clock.gallery" />
+        <package android:name="com.oplus.keyguard.clock.graffiti" />
+        <package android:name="com.oplus.keyguard.clock.magazine" />
+        <package android:name="com.oplus.keyguard.personality.clocks" />
+        <package android:name="com.oplus.keyguard.style.widgets" />
+        <package android:name="com.oplus.matrix" />
+        <package android:name="com.oplus.olc" />
+        <package android:name="com.oplus.omoji" />
+        <package android:name="com.oplus.owork" />
+        <package android:name="com.oplus.remotecontrol" />
+        <package android:name="com.oplus.travelengine" />
+        <package android:name="com.coloros.ocrscanner" />
+        <package android:name="com.coloros.remoteguardservice" />
+        <package android:name="com.coloros.scenemode" />
+        <package android:name="com.coloros.sceneservice" />
+        <package android:name="com.coloros.securepay" />
+        <package android:name="com.coloros.securityguard" />
+        <package android:name="com.coloros.sharescreen" />
+        <package android:name="com.coloros.systemclone" />
+        <package android:name="com.coloros.translate.engine" />
+        <package android:name="com.coloros.video" />
+        <package android:name="com.fido.fido2client" />
+        <package android:name="com.google.android.gms" />
+        <package android:name="com.google.android.gsf" />
+        <package android:name="com.google.android.marvin.talkback" />
+        <package android:name="com.google.android.projection.gearhead" />
+        <package android:name="com.android.devicelockcontroller" />
+        <package android:name="com.coloros.codebook" />
+        <package android:name="com.coloros.colordirectservice" />
+    </queries>
 
     <application
         android:allowBackup="false"

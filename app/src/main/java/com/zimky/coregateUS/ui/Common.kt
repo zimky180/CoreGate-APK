@@ -4,7 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -93,6 +93,12 @@ fun CoreCell(
     val cs = MiuixTheme.colorScheme
     val cellBg = if (online) color.copy(alpha = 0.16f) else cs.surfaceContainerHigh
     val cellBorder = if (online) color.copy(alpha = 0.45f) else cs.outline
+    // interactionSource 提到外面无条件创建：
+    //   原来写在 `if (onClick != null)` 分支内部，属于「条件调用 remember」，
+    //   onClick 一旦从 null 变成非 null，组合槽位数量就变了，会触发崩溃。
+    //   这个 cell 只在首页用、onClick 恒为 null（点击由父层统一处理），
+    //   所以此前没炸，但写法本身是错的，顺手改掉。
+    val cellPress = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
@@ -103,7 +109,7 @@ fun CoreCell(
                     Modifier.clickable(
                         // 直接用 material3 ripple：LocalIndication 已被新版 Compose 移除
                         indication = ripple(),
-                        interactionSource = remember { MutableInteractionSource() }
+                        interactionSource = cellPress
                     ) { onClick() }
                 } else Modifier
             )
@@ -322,15 +328,15 @@ fun ToastHost(modifier: Modifier = Modifier) {
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = fadeIn(animationSpec = tween(180)) +
-            slideInVertically(animationSpec = tween(180), initialOffsetY = { -it / 2 }),
+        enter = fadeIn(animationSpec = tween(180)) + scaleIn(
+            animationSpec = tween(200),
+            initialScale = 0.92f
+        ),
         exit = fadeOut(animationSpec = tween(220))
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            contentAlignment = Alignment.TopCenter
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
             Text(
                 text = shown.msg,

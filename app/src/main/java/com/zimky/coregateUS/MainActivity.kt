@@ -36,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
@@ -143,15 +145,25 @@ private fun PageSlot(visible: Boolean, content: @Composable () -> Unit) {
             // 按钮「点不着」也是同一个根因：Column 只有内容那么高，
             // 下方区域根本不属于这页，点击自然落到别的页上。
             //
-            // 在 PageSlot 上铺一层主题底色后：
+            // 在 PageSlot 上铺一层纯白底后：
             //   1) 可见页无论内容多短，都是整屏不透明，不可能透出别的页；
-            //   2) 隐藏页因为 graphicsLayer.alpha = 0，这层底色也一起不绘制，
-            //      不会反过来盖住可见页（alpha 作用于整个节点，含 background）。
-            // 颜色取 MiuixTheme.background，与 RootGate 门槛页、KSU 原生底色一致。
-            .background(MiuixTheme.colorScheme.background)
-            .graphicsLayer {
-                // 隐藏页完全不参与绘制：alpha=0 且不落任何像素
-                alpha = if (visible) 1f else 0f
+            //   2) 隐藏页直接在绘制阶段整体跳过，不会反过来盖住可见页。
+            //
+            // 【为什么从 graphicsLayer{alpha} 改成 drawWithContent】
+            //   真机反馈：切到「策略」页时，锁核页的内容仍然透出来，两页文字叠在一起。
+            //   根因是 graphicsLayer 的 alpha 是「整层按 alpha 混合」，它并不能保证
+            //   被完全遮盖 —— 只要下层页有其他绘制时序（例如某个子节点自己提升了图层、
+            //   或底栏 backdrop 触发重组绘制），混合就会露出底下的内容。
+            //   drawWithContent 是硬开关：可见时照常绘制，不可见时【一个像素都不落】，
+            //   不参与任何混合，根本不存在「半透明透出」的可能。
+            //   背景直接画在 drawWithContent 里面，跟内容同生共死：
+            //   可见时先刷一整屏纯白，再画内容；不可见时【连白底都不画】，
+            //   所以隐藏页既不会透出自己，也不会挡住别人。
+            .drawWithContent {
+                if (visible) {
+                    drawRect(Color.White)
+                    drawContent()
+                }
             }
     ) {
         content()
@@ -463,10 +475,35 @@ private fun AppRoot() {
                 //   二级页是独立全屏层，不经过外层那个挂了 statusBarsPadding 的 Box，
                 //   不自己补一下标题就会顶进状态栏。
                 if (subPage != SubPage.NONE) {
+                    // 二级页必须是「完完全全的第二屏」。
+                    //
+                    // 用户反馈：「打开的第二页跟第一页重叠，是能互相看见的，不好看」。
+                    // 根因是本层 Box 之前只有 zIndex(2f) + statusBarsPadding()：
+                    //   1) 没有铺底色 → 下层可见页（zIndex 1f）的内容直接透出来；
+                    //   2) 没有拦指针事件 → 点空白处会穿到下层页的按钮上，
+                    //      表现成「看着是第二页，点下去却触发了第一页的东西」。
+                    //
+                    // 修法：整屏铺不透明主题底色（surface）+ 整块吞掉指针事件。
+                    // 底色用 MiuixTheme.colorScheme.surface，与四个常驻页 PageSlot 的底色一致，
+                    // 切换时不会有色差;铺满 fillMaxSize 后连状态栏区域也不透。
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .zIndex(2f)
+                            .background(MiuixTheme.colorScheme.surface)
+                            // 整块吞掉指针：二级页开着时，下层任何东西都不该被点到。
+                            //
+                            // 用 awaitEachGesture 一路吃到手指抬起，理由同 PageSlot：
+                            // 只 consume 按下的话，后续移动事件还会漏给下层 scroll，
+                            // 表现成「在二级页上滑动，下面的列表跟着动」。
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    down.consume()
+                                    val up = waitForUpOrCancellation()
+                                    if (up != null) up.consume()
+                                }
+                            }
                             .statusBarsPadding()
                     ) {
                         when (subPage) {
@@ -512,12 +549,15 @@ private fun AppRoot() {
                 )
             }
 
-            // 轻提示层：盖在内容与底栏之上，顶部居中淡入淡出
+            // 轻提示层：盖在内容与底栏之上，屏幕正中淡入淡出
+            //
+            // 用户要求：「弹窗你别挂到最下面啊，你整到屏幕中间的那种弹窗」。
+            // 之前贴在顶部 statusBars 下方，视觉上像一条通知条；改成整体居中后
+            // 更像一个「提示」，也不会被悬浮底栏或页面标题挤到边缘。
             ToastHost(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 12.dp)
+                    .align(Alignment.Center)
+                    .padding(horizontal = 24.dp)
             )
         }
     }

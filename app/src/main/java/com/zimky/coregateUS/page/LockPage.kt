@@ -96,6 +96,14 @@ fun LockPage(
     // 待确认的核操作：点了方块先落这里，弹框确认后才真正发命令。
     var pendingCore by remember { mutableStateOf<SysProbe.Core?>(null) }
 
+    // 根容器从 Column 改成 Box：
+    // 确认弹窗必须以「整屏浮层」的形式盖在内容之上，居中弹出。
+    // 之前把 pendingCore?.let { ... } 直接写在滚动 Column 的内容末尾，
+    // 它就成了「滚动内容里的一个孩子」——被上方卡片一路顶到页面最底部，
+    // 看着像贴在底部的提示条，而不是弹窗。
+    // 拆成 Box 之后，Column 只负责滚动内容，弹窗作为兄弟层叠在上面，
+    // 用 fillMaxSize 覆盖整屏、Alignment.Center 居中，与滚动位置彻底无关。
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             // 一级页必须自己铺满整屏：
@@ -345,39 +353,42 @@ fun LockPage(
             }
         }
 
-        // ── 核心封锁/解封二次确认 ────────────────────────────────────
-        // 放在内容末尾、与卡片同级：用 fillMaxSize 遮罩盖住整页，不参与卡片排版。
-        pendingCore?.let { core ->
-            CoreConfirmDialog(
-                core = core,
-                onCancel = { pendingCore = null },
-                onConfirm = {
-                    pendingCore = null
-                    busy = true
-                    val target = core
-                    val action = if (target.online) {
-                        { cb: (Boolean, String) -> Unit -> ModuleBridge.coreOff(sh, target.id, cb) }
-                    } else {
-                        { cb: (Boolean, String) -> Unit -> ModuleBridge.coreOn(sh, target.id, cb) }
-                    }
-                    action { ok, msg ->
-                        busy = false
-                        if (ok) {
-                            Toaster.show(
-                                if (target.online) "已封锁 CPU${target.id}，切到游戏时会自动恢复全部核心。"
-                                else "已解除 CPU${target.id} 的封锁。"
-                            )
-                        } else {
-                            Toaster.show(msg, true)
-                        }
-                        // 无论成败都重读真机状态：成功要看到变化，失败要看到「其实没变」
-                        onRefresh()
-                    }
-                }
-            )
-        }
-
         BottomSpacer()
+    }
+
+    // ── 核心封锁/解封二次确认（整屏浮层，居中弹出） ────────────────
+    // 与滚动 Column 同级、排在它后面，因此天然覆盖在内容之上，
+    // 且不参与 verticalScroll 的测量，滚动到哪儿都居中。
+    pendingCore?.let { core ->
+        CoreConfirmDialog(
+            core = core,
+            onCancel = { pendingCore = null },
+            onConfirm = {
+                pendingCore = null
+                busy = true
+                val target = core
+                val action = if (target.online) {
+                    { cb: (Boolean, String) -> Unit -> ModuleBridge.coreOff(sh, target.id, cb) }
+                } else {
+                    { cb: (Boolean, String) -> Unit -> ModuleBridge.coreOn(sh, target.id, cb) }
+                }
+                action { ok, msg ->
+                    busy = false
+                    if (ok) {
+                        Toaster.show(
+                            if (target.online) "已封锁 CPU${target.id}，切到游戏时会自动恢复全部核心。"
+                            else "已解除 CPU${target.id} 的封锁。"
+                        )
+                    } else {
+                        Toaster.show(msg, true)
+                    }
+                    // 无论成败都重读真机状态：成功要看到变化，失败要看到「其实没变」
+                    onRefresh()
+                }
+            }
+        )
+    }
+
     }
 }
 
