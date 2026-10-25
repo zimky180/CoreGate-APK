@@ -642,7 +642,7 @@ private fun SwitchCompact(
     // 不能放在 if 分支里，否则 busy 切换时槽位数量变化会直接崩），
     // 因此在外面常驻创建，只在 busy 时才读取它的值。
     val busyTransition = rememberInfiniteTransition(label = "busy")
-    val busyPulse by busyTransition.animateFloat(
+    val busyPulse = busyTransition.animateFloat(
         initialValue = 0.45f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -651,7 +651,7 @@ private fun SwitchCompact(
         ),
         label = "busyAlpha"
     )
-    val busyAlpha = if (busy) busyPulse else 1f
+    val busyAlpha = if (busy) busyPulse.value else 1f
 
     // 轨道内宽 = 38dp，滑块 18dp，两侧各留 2dp → 可移动距离 38-18-4 = 16dp
     // busy 时滑块收窄到 14dp，可移动距离要相应加宽 4dp，否则滑块会缩在左半边不靠右
