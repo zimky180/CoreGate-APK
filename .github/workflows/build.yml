@@ -9,7 +9,6 @@ jobs:
     permissions:
       contents: read
       issues: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,34 +41,52 @@ jobs:
           gradle-version: '9.3.1'
           cache-disabled: true
 
-      # 构建输出落盘。失败时提炼错误为 ::error:: 注解 + step summary，
-      # 并通过 issue 评论回传完整日志。
       - name: Build debug APK
         shell: bash
+        continue-on-error: true
         env:
           GH_LOG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p ci-logs
-          gradle assembleDebug --no-daemon --stacktrace --console=plain \
-            > ci-logs/gradle-build.log 2>&1
+          set +e
+          gradle assembleDebug --no-daemon --stacktrace --console=plain > ci-logs/gradle-build.log 2>&1
           rc=$?
-          if [ "$rc" -eq 0 ]; then
-            echo "gradle assembleDebug OK"
-            tail -n 40 ci-logs/gradle-build.log
-            exit 0
-          fi
-          echo "===== gradle 退出码 $rc ====="
-          tail -n 200 ci-logs/gradle-build.log
-          echo "===== 提炼错误要点 ====="
-          python3 .github/scripts/ci_extract_errors.py ci-logs/gradle-build.log || true
+          echo "gradle exit code = [$rc]"
           echo "$rc" > ci-logs/exit-code.txt
-          echo "===== 回传日志到 issue ====="
-          GITHUB_TOKEN="$GH_LOG_TOKEN" \
-            python3 .github/scripts/report_log_to_issue.py ci-logs/gradle-build.log || true
-          exit $rc
+          echo "--- log size: $(wc -c < ci-logs/gradle-build.log) bytes ---"
+          tail -n 200 ci-logs/gradle-build.log
+          python3 .github/scripts/ci_extract_errors.py ci-logs/gradle-build.log || echo "extract script failed"
+          exit 0
 
-      # 关键闸门：packaging.merges 一旦漏配，APK 里就没有 META-INF/xposed/*，
-      # LSPosed 列表里本模块会「根本不出现」且没有任何报错。
+      - name: Upload gradle log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: ci-logs/
+          if-no-files-found: warn
+
+      - name: Publish log to issue
+        if: always()
+        shell: bash
+        env:
+          GH_LOG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_RUN: ${{ github.run_id }}
+          GH_SHA: ${{ github.sha }}
+        run: |
+          if [ -f ci-logs/gradle-build.log ]; then
+            GITHUB_TOKEN="$GH_LOG_TOKEN" python3 .github/scripts/report_log_to_issue.py ci-logs/gradle-build.log || echo "issue report failed"
+          else
+            echo "no log file"
+          fi
+
+      - name: Fail if gradle failed
+        shell: bash
+        run: |
+          rc=$(cat ci-logs/exit-code.txt 2>/dev/null || echo 99)
+          echo "gradle rc = $rc"
+          if [ "$rc" != "0" ]; then exit 1; fi
+
       - name: Verify Xposed metadata in APK
         run: |
           APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
@@ -84,27 +101,13 @@ jobs:
           done
           echo "xposed metadata OK"
 
-      - name: Locate APK
-        id: apk
-        run: |
-          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          echo "path=$APK" >> "$GITHUB_OUTPUT"
-          echo "Found APK: $APK"
-          ls -l "$APK"
-
       - name: Rename APK
         run: |
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          echo "Found APK: $APK"
           mkdir -p out
-          cp "${{ steps.apk.outputs.path }}" "out/CoreGate-APK-debug-v2.2.2.apk"
+          cp "$APK" "out/CoreGate-APK-debug-v2.2.2.apk"
           ls -l out
-
-      - name: Upload gradle log (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-build-log
-          path: ci-logs/
-          if-no-files-found: warn
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
