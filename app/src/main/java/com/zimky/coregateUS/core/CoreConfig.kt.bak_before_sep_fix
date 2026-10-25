@@ -1,3 +1,0 @@
-备份点：修 CoreConfig.load() 分隔符前（原文件 250 行）。
-问题：echo <<<CFG>>> 在 sh 中被解析为 here-string 重定向，输出 CFG 而非 <<<CFG>>>，导致 indexOf 全为 -1。
-原 load() 位于 189-223 行。
