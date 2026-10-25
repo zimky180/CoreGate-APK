@@ -110,6 +110,8 @@ fun SettingsPage(
     save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit
 ) {
     val cs = MiuixTheme.colorScheme
+    // 在 @Composable 上下文里取一次，供 NavRow 的普通 onClick lambda 捕获使用
+    val ctx = LocalContext.current
     val s = snapshot
     val daemonAlive = s?.daemonAlive == true
     // ── 名单编辑缓冲：父级刷新回来时同步，用户改过则不覆盖 ──
@@ -549,7 +551,6 @@ fun SettingsPage(
                     title = "酷安",
                     summary = CONTACT_COOLAPK_HINT,
                     onClick = {
-                        val ctx = LocalContext.current
                         if (!openUrl(ctx, CONTACT_COOLAPK_URL)) {
                             Toaster.show("打开酷安失败，手动搜：" + CONTACT_COOLAPK_HINT, true)
                         }
@@ -560,7 +561,6 @@ fun SettingsPage(
                     title = "QQ 群",
                     summary = CONTACT_QQ_HINT,
                     onClick = {
-                        val ctx = LocalContext.current
                         if (!openUrl(ctx, CONTACT_QQ_URL)) {
                             Toaster.show("打开 QQ 失败，群号 " + CONTACT_QQ_HINT, true)
                         }
