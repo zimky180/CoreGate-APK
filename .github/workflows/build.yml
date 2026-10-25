@@ -6,6 +6,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
@@ -46,6 +49,8 @@ jobs:
       # 这样即便拿不到 job logs，也能从 check-runs annotations 读到错误原文。
       - name: Build debug APK
         shell: bash
+        env:
+          GH_LOG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p ci-logs
           gradle assembleDebug --no-daemon --stacktrace --console=plain \
@@ -59,8 +64,11 @@ jobs:
           echo "===== gradle 退出码 $rc ====="
           tail -n 200 ci-logs/gradle-build.log
           echo "===== 提炼错误要点 ====="
-          python3 .github/scripts/ci_extract_errors.py ci-logs/gradle-build.log
+          python3 .github/scripts/ci_extract_errors.py ci-logs/gradle-build.log || true
           echo "$rc" > ci-logs/exit-code.txt
+          echo "===== 回传日志到 issue ====="
+          GITHUB_TOKEN="$GH_LOG_TOKEN" \
+            python3 .github/scripts/report_log_to_issue.py ci-logs/gradle-build.log || true
           exit $rc
 
       # 关键闸门：packaging.merges 一旦漏配，APK 里就没有 META-INF/xposed/*，
