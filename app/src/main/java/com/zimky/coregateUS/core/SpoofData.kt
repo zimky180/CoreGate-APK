@@ -98,7 +98,24 @@ object SpoofData {
         }
 
         companion object {
+            /**
+             * 主配置路径（root 视角的真源）。
+             *
+             * 注意：这个路径**不是** Xposed 侧直接读的那个（见下方 MIRROR）。
+             * /data/adb 是 700 root root，被注入的应用进程根本进不去，
+             * 所以每次落盘都要再往 MIRROR 同步一份。
+             */
             const val FILE = "/data/adb/CoreGate/spoof.json"
+
+            /**
+             * 镜像路径：Xposed 侧真正读的那份。
+             *
+             * /data/local/tmp 权限 drwxrwx--x，普通应用可进可读，
+             * su 2000 实测能完整读出，所以放在这里给目标进程读。
+             * 两份内容永远一致，都改都写，避免「App 显示已开、实际没生效」。
+             */
+            const val MIRROR_FILE = "/data/local/tmp/CoreGate/spoof.json"
+            const val MIRROR_DIR = "/data/local/tmp/CoreGate"
 
             fun parse(raw: String?): State {
                 val s = State()
@@ -119,13 +136,26 @@ object SpoofData {
                 return s
             }
 
-            /** 生成原子落盘命令（base64 传内容，规避一切转义问题） */
+            /**
+             * 生成原子落盘命令（base64 传内容，规避一切转义问题）。
+             *
+             * 写两处：
+             *   1. FILE        —— 真源，持久、可被 root 工具读取
+             *   2. MIRROR_FILE —— 给 Xposed 侧读，普通应用进程能读
+             * 镜像用 cp 从真源复制，保证两者字节级一致；复制后 chmod 644 让
+             * 目标进程读得到（/data/local/tmp 默认 umask 可能给 600）。
+             */
             fun buildSaveCmd(st: State): String =
                 "CFG='" + CoreConfig.base64(st.toJsonString()) + "'; " +
                     "mkdir -p " + Paths.DIR + "; " +
                     "echo \"\$CFG\" | base64 -d > " + FILE + ".tmp && " +
                     "mv " + FILE + ".tmp " + FILE + " && " +
-                    "chmod 644 " + FILE + "; sync; echo OK"
+                    "chmod 644 " + FILE + "; " +
+                    "mkdir -p " + MIRROR_DIR + " && " +
+                    "cp -f " + FILE + " " + MIRROR_FILE + " && " +
+                    "chmod 755 " + MIRROR_DIR + " && " +
+                    "chmod 644 " + MIRROR_FILE + "; " +
+                    "sync; echo OK"
 
             /** 一次 root 调用把 spoof.json 读回来 */
             fun load(sh: RootShell, cb: (State) -> Unit) {

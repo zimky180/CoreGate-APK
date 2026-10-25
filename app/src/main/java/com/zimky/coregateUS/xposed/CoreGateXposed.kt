@@ -64,8 +64,28 @@ class CoreGateXposed : XposedModule() {
     companion object {
         private const val TAG = "CoreGate-Spoof"
 
-        /** App 侧的落盘路径，两侧必须一致（SpoofData.State.Companion.FILE）。 */
-        private const val CFG = "/data/adb/CoreGate/spoof.json"
+        /**
+         * 配置候选路径，按顺序尝试，第一个读得通的就用。
+         *
+         * ══════════════════════════════════════════════════════════════
+         * 为什么不能只写 /data/adb/CoreGate/spoof.json（v2.2.3 修的坑）
+         * ──────────────────────────────────────────────────────────────
+         * 早期只认 /data/adb 这一个路径，结果伪造在真机上「永远不生效」：
+         *   · /data/adb 的权限是 drwx------ root root（700），连 system(1000)
+         *     都进不去，更别说被注入的抖音进程（untrusted_app 域）。
+         *   · 于是 File(CFG).exists() 恒为 false → clearSpoof() → active=false
+         *     → 日志里刷「不在生效范围，跳过」，hook 一次都没装上。
+         *   · 用 su 2000 实测 cat /data/adb/CoreGate/spoof.json 就是
+         *     "Permission denied"，证据确凿。
+         *
+         * /data/local/tmp 是 drwxrwx--x，别的应用能进能读，su 2000 实测
+         * 可完整读出配置，所以把它作为首选；/data/adb 放第二位，给
+         * system_server 这类本身就是 root 的进程兜底。
+         */
+        private val CFG_CANDIDATES = arrayOf(
+            "/data/local/tmp/CoreGate/spoof.json",
+            "/data/adb/CoreGate/spoof.json"
+        )
 
         /** 配置缓存有效期：避免每次属性读取都碰文件 IO。 */
         private const val CACHE_TTL_MS = 1500L
@@ -175,20 +195,38 @@ class CoreGateXposed : XposedModule() {
         if (!force && now - cacheAt < CACHE_TTL_MS) return
         cacheAt = now
 
-        val raw = try {
-            val f = File(CFG)
-            if (!f.exists() || !f.canRead()) {
-                clearSpoof()
-                return
+        // 按候选顺序找第一个「存在且可读」的配置。
+        // 读不到不是异常，而是常态（比如 LSPosed 作用域没勾抖音、或者进程域受限），
+        // 所以这里只在全部落空时打一条 WARN，把试过的路径一起打出来，方便定位。
+        var raw: String? = null
+        var usedPath: String? = null
+        for (p in CFG_CANDIDATES) {
+            try {
+                val f = File(p)
+                if (f.exists() && f.canRead()) {
+                    val text = f.readText()
+                    if (text.isNotBlank()) {
+                        raw = text
+                        usedPath = p
+                        break
+                    }
+                }
+            } catch (t: Throwable) {
+                log(Log.WARN, TAG, "读 " + p + " 失败: " + t.message)
             }
-            f.readText()
-        } catch (t: Throwable) {
-            log(Log.WARN, TAG, "读配置失败: " + t.message)
+        }
+        if (raw == null) {
+            log(Log.WARN, TAG, "找不到可读的伪造配置（试过: " + CFG_CANDIDATES.joinToString() + "）")
             clearSpoof()
             return
         }
+        // 显式承接成非空局部常量：raw 是 var String?，Kotlin 的智能转换
+        // 对「循环内赋值的局部 var」并不总是放行，这里判空后立刻固化成
+        // String，后面所有取值函数都接收非空 String，编译期零悬念。
+        val cfg: String = raw ?: ""
 
-        if (!bool(raw, "enabled")) {
+        if (!bool(cfg, "enabled")) {
+            log(Log.INFO, TAG, "配置 enabled=false，跳过（" + usedPath + "）")
             clearSpoof()
             return
         }
@@ -196,23 +234,26 @@ class CoreGateXposed : XposedModule() {
         // 档案：App 侧 SpoofData.toJsonString() 固定写一个 "profile" 对象（6 个标识字段）。
         // 字段不全，硬件画像由本侧的 OPPO_A5_FULL 补齐，详见该常量注释。
         // 用局部非空变量承接，避免依赖编译器的智能转换（复合条件里的判空容易失效）
-        val prof = obj(raw, "profile")
+        val prof = obj(cfg, "profile")
         if (prof == null) {
+            log(Log.WARN, TAG, "配置缺少 profile 对象，跳过（" + usedPath + "）")
             clearSpoof()
             return
         }
         val base: Map<String, String> = prof
         val modelOf = base["product.model"] ?: base["model"]
         if (modelOf.isNullOrBlank()) {
+            log(Log.WARN, TAG, "profile 里没有机型字段，跳过（" + usedPath + "）")
             clearSpoof()
             return
         }
 
         // 作用域：scope_packages 非空时按包名过滤，为空则不做包名过滤
         // （实际生效范围由 LSPosed 作用域兜底，用户只勾抖音即可）
-        val scopeList = arr(raw, "scope_packages")
+        val scopeList = arr(cfg, "scope_packages")
         if (scopeList.isNotEmpty()) {
             if (pkg.isNullOrBlank() || scopeList.none { it == pkg }) {
+                log(Log.INFO, TAG, "包 " + pkg + " 不在配置的作用域内（" + scopeList.joinToString() + "）")
                 clearSpoof()
                 return
             }

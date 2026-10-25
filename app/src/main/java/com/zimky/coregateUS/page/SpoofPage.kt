@@ -110,7 +110,7 @@ fun SpoofPage(
             }
             Spacer(Modifier.width(4.dp))
             Text(
-                "伪造机型",
+                "老机型模拟",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Medium,
                 color = Color.White
@@ -121,7 +121,7 @@ fun SpoofPage(
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp)) {
                 SwitchRow(
-                    title = "启用伪造机型",
+                    title = "启用老机型模拟",
                     desc = "只在 LSPosed 勾选的应用里生效",
                     trailing = {
                         SwitchCompact(
@@ -182,7 +182,7 @@ fun SpoofPage(
             Column(Modifier.padding(14.dp)) {
                 LabelText("用来干什么")
                 Gap(8.dp)
-                HintText("这个开关就是给抖音用的。打开以后，抖音会把本机认成 OPPO A5，自己进省电的那一档，用起来更省电。")
+                HintText("这个开关就是给抖音用的。打开以后，抖音会把本机认成 OPPO A5 这种老机器，自己进省电的那一档，用起来更省电。")
                 Gap(8.dp)
                 HintText("只改抖音读到的机型，不动手机本身，也不影响别的应用。关掉开关就恢复。")
             }

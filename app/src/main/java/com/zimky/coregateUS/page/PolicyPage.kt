@@ -274,8 +274,8 @@ fun PolicyPage(
                 )
                 HairLine()
                 NavRow(
-                    title = "伪造机型",
-                    summary = "让游戏以为这是别的手机",
+                    title = "老机型模拟",
+                    summary = "让抖音以为这是老手机，开启省电优化",
                     onClick = onOpenSpoof
                 )
 

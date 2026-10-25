@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,7 @@ import com.zimky.coregateUS.ui.HairLine
 import com.zimky.coregateUS.ui.HintText
 import com.zimky.coregateUS.ui.KeyValueRow
 import com.zimky.coregateUS.ui.MonoText
+import com.zimky.coregateUS.ui.NavRow
 import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
 import com.zimky.coregateUS.ui.SubText
@@ -60,6 +62,35 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/**
+ * 联系方式。
+ *
+ * 两个入口点击后用系统浏览器 / 对应 App 打开，失败则退化成弹提示，
+ * 保证在没装酷安 / QQ 的机器上也不会点了没反应。
+ */
+private const val CONTACT_COOLAPK_URL = "https://www.coolapk.com/u/40403466"
+private const val CONTACT_COOLAPK_HINT = "酷安 @zimky"
+private const val CONTACT_QQ_URL =
+    "https://qun.qq.com/universal-share/share?ac=1&authKey=NGIVdTO79IV8KXNxUtDnWurJXfcE4YvDRjqoUR1TmNyQ3YzDMPVl1gs0WaSPg8eS&busi_data=eyJncm91cENvZGUiOiI2OTYxOTIyNjIiLCJ0b2tlbiI6IlZ4WjNDblFGTWdVL29wclVEOVdzRFFQOXFMMWRKaWFkYlJ5dThoSEp3bnR3Z0V1Qm5KcXloMVFBeXJlUmE1K3EiLCJ1aW4iOiIxODA1OTIwMjMyIn0=&data=30cZ6rK_2N8u5oZcEMCIxtGJPK0eKSCj9MeW9UD9Lq5Ei7PXKz5HSwccU1CXUG2mkuHyA_EfQBNQqLapwI6KNw&svctype=4&tempid=h5_group_info"
+private const val CONTACT_QQ_HINT = "QQ 群 696192262"
+
+/**
+ * 用系统 Intent 打开一个链接。
+ *
+ * 不申请任何权限，只管发一个 ACTION_VIEW；找不到能处理的 Activity
+ * （比如机器上没装浏览器）时返回 false，调用方退回弹提示。
+ */
+private fun openUrl(ctx: android.content.Context, url: String): Boolean {
+    return try {
+        val i = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(i)
+        true
+    } catch (t: Throwable) {
+        false
+    }
+}
 
 /**
  * 第 4 页：设置 / 名单 / 日志 / 诊断 / 关于。
@@ -492,7 +523,7 @@ fun SettingsPage(
 
                 KeyValueRow("名称", "CoreGate")
                 KeyValueRow("作者", "zimky")
-                KeyValueRow("版本", "2.2.0")
+                KeyValueRow("版本", "2.2.3")
                 KeyValueRow("模块目录", Paths.MODULE_DIR)
                 KeyValueRow("数据目录", Paths.DIR)
 
@@ -502,7 +533,42 @@ fun SettingsPage(
                         "不写任何系统分区，重启即还原，完全可逆、零残留。"
                 )
                 Gap(8.dp)
-                HintText("APK 与模块的 WebUI 读写同一份 config.json 与 packages.txt，两边互不影响。")
+                HintText("APK 是唯一的操作入口，直接读写模块的 config.json 与 packages.txt，不依赖任何 WebUI。")
+            }
+        }
+
+        // ── 卡片六：联系作者 ─────────────────────────────────────────
+        // 放在最底部：属于「想看才看」的内容，不占日常视野。
+        // 点击走系统 Intent；打不开（没装酷安/QQ/浏览器）才弹提示兜底。
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(text = "联系作者 / 反馈与建议", color = cs.onSurface, fontSize = 16.sp)
+                Gap(4.dp)
+
+                NavRow(
+                    title = "酷安",
+                    summary = CONTACT_COOLAPK_HINT,
+                    onClick = {
+                        val ctx = LocalContext.current
+                        if (!openUrl(ctx, CONTACT_COOLAPK_URL)) {
+                            Toaster.show("打开酷安失败，手动搜：" + CONTACT_COOLAPK_HINT, true)
+                        }
+                    }
+                )
+                HairLine()
+                NavRow(
+                    title = "QQ 群",
+                    summary = CONTACT_QQ_HINT,
+                    onClick = {
+                        val ctx = LocalContext.current
+                        if (!openUrl(ctx, CONTACT_QQ_URL)) {
+                            Toaster.show("打开 QQ 失败，群号 " + CONTACT_QQ_HINT, true)
+                        }
+                    }
+                )
+
+                Gap(10.dp)
+                HintText("用着有问题、或者想加点什么，直接来找我。说清楚机型和现象，能省一半排查时间。")
             }
         }
 
