@@ -1,115 +1,80 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""从 gradle-build.log 提炼错误，输出为 GitHub annotations（::error::）。
+
+annotations 可通过公开 API 读取，不需要 actions:read 权限，是当前唯一
+稳定可取的日志回传通道。每条消息做转义并截断，避免换行破坏格式。
 """
-CI 辅助脚本：从 gradle 构建日志里提取真实错误，并以 GitHub Actions
-::error:: 注解的形式打印出来。
-
-背景：本地/CI 都不具备 actions:read 权限去读 job logs，匿名网页也被
-登录墙挡住。但 check-runs 的 annotations 接口是公开可读的，所以只要
-把错误文本塞进 ::error:: 注解，就能反向拿到编译错误原文。
-
-用法：python3 .github/scripts/ci_extract_errors.py ci-logs/gradle-build.log
-"""
-
+import os
 import re
 import sys
 
-MAX_CHUNK = 1000
-MAX_ANNOT = 12
+MAX_MSG = 900
+MAX_ITEMS = 14
+
+ESCAPE = [('%', '%25'), ('\r', '%0D'), ('\n', '%0A')]
 
 
-def main() -> int:
-    if len(sys.argv) < 2:
-        print('::error::ci_extract_errors.py 缺少日志文件参数')
-        return 2
+def esc(s):
+    for a, b in ESCAPE:
+        s = s.replace(a, b)
+    return s
 
-    path = sys.argv[1]
+
+def main():
+    path = sys.argv[1] if len(sys.argv) > 1 else 'ci-logs/gradle-build.log'
     try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as f:
-            text = f.read()
-    except OSError as exc:
-        print('::error::无法读取构建日志 %s: %s' % (path, exc))
-        return 2
+        raw = open(path, 'r', errors='replace').read()
+    except Exception as e:
+        print('::error::cannot read %s: %s' % (path, e))
+        return 0
 
-    lines = text.splitlines()
+    lines = raw.splitlines()
+    print('log lines = %d, bytes = %d' % (len(lines), len(raw)))
 
-    picked = []
-    capture_ww = False
-    ww_used = 0
+    pat = re.compile(
+        r'(^e:|FAILURE|What went wrong|Could not |error:|Unresolved reference|'
+        r'Caused by:|A problem occurred|Execution failed|> Task .*FAILED|'
+        r'Cannot |Unable to |not found|No such)', re.I)
 
+    seen, uniq = set(), []
     for ln in lines:
-        s = ln.rstrip()
-
-        # Kotlin 编译器错误：e: file:///path/File.kt:123:45 message
-        if re.match(r'^e: ', s):
-            picked.append(s.strip())
+        s = ln.strip()
+        if not s or not pat.search(s):
             continue
-
-        # javac 错误
-        if ' error: ' in s or s.startswith('error: '):
-            picked.append(s.strip())
+        if s in seen:
             continue
+        seen.add(s)
+        uniq.append(s)
 
-        # 最常见的 Kotlin 语义错误关键词
-        if 'Unresolved reference' in s or 'Type mismatch' in s:
-            picked.append(s.strip())
-            continue
+    print('candidates = %d' % len(uniq))
 
-        # Gradle 的 What went wrong 段落，最多收录 40 行
-        if 'What went wrong' in s:
-            capture_ww = True
-            ww_used = 0
-            picked.append('=== What went wrong ===')
-            continue
-        if capture_ww:
-            if s.strip() == '' or ww_used >= 40:
-                capture_ww = False
-            else:
-                picked.append(s.strip())
-                ww_used += 1
-                continue
+    # 1) 环境信息头
+    head = [ln.strip() for ln in lines[:12] if ln.strip()]
+    for ln in head[:6]:
+        print('::error::HEAD %s' % esc(ln[:400]))
 
-        if s.startswith('FAILURE: '):
-            picked.append(s.strip())
-            continue
-        if 'Caused by:' in s:
-            picked.append(s.strip())
-            continue
-        if 'Could not resolve' in s or 'Could not find' in s:
-            picked.append(s.strip())
-            continue
-        if 'Task ' in s and 'FAILED' in s:
-            picked.append(s.strip())
-            continue
-        if s.startswith('> ') and ('Could not' in s or 'Failed' in s):
-            picked.append(s.strip())
-            continue
+    # 2) 末尾上下文（Gradle 的 "What went wrong" 一定在末尾）
+    tail = [ln.strip() for ln in lines[-120:] if ln.strip()]
+    for i in range(0, min(len(tail), 30), 2):
+        chunk = ' | '.join(tail[i:i + 2])
+        print('::error::TAIL %s' % esc(chunk[:MAX_MSG]))
 
-    # 去重保序
-    seen = set()
-    uniq = []
-    for ln in picked:
-        if ln not in seen:
-            seen.add(ln)
-            uniq.append(ln)
+    # 3) 提炼出的错误行
+    for ln in uniq[:MAX_ITEMS]:
+        print('::error::%s' % esc(ln[:MAX_MSG]))
 
-    # 一条都没抓到就退回日志尾部，至少给出上下文
-    if not uniq:
-        uniq = ['(未匹配到已知错误模式，下面是日志尾部)'] + lines[-60:]
-
-    blob = '\n'.join(uniq)
-
-    chunks = [blob[i:i + MAX_CHUNK] for i in range(0, len(blob), MAX_CHUNK)]
-    if len(chunks) > MAX_ANNOT:
-        chunks = chunks[:MAX_ANNOT]
-
-    total = len(chunks)
-    for idx, ch in enumerate(chunks, 1):
-        # ::error:: 注解里换行必须转成 %0A，% 本身要转义成 %25
-        esc = ch.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-        print('::error::[gradle-%d/%d] %s' % (idx, total, esc))
-
-    print('::error::gradle 构建失败；日志已上传为 artifact gradle-build-log')
+    sp = os.environ.get('GITHUB_STEP_SUMMARY')
+    if sp:
+        try:
+            with open(sp, 'a') as f:
+                f.write('\n### gradle 失败摘要\n\n```\n')
+                f.write('\n'.join(tail[-40:]))
+                f.write('\n```\n\n#### 关键错误\n\n```\n')
+                f.write('\n'.join(uniq[:40]))
+                f.write('\n```\n')
+        except Exception as e:
+            print('summary write failed: %s' % e)
     return 0
 
 
