@@ -696,7 +696,7 @@ private fun SwitchCompact(
                 .padding(horizontal = 2.dp)
                 .offset(x = knobOffsetDp.dp)
                 .size(width = if (busy) 14.dp else 18.dp, height = 18.dp)
-                .graphicsLayer { alpha = if (busy) busyAlpha else 1f }
+                .graphicsLayer { this.alpha = if (busy) busyAlpha else 1f }
                 .clip(CircleShape)
                 .background(knobColor)
         )
