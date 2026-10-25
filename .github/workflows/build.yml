@@ -11,7 +11,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -38,8 +38,31 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '9.3.1'
+          # 本仓库的 Actions 缓存服务持续返回 400 / 503，读写都失败。
+          # 缓存只影响构建速度，不影响正确性，先关掉免得噪声淹没真正的错误。
+          cache-disabled: true
+
+      # 构建输出落盘。失败时调用仓库内脚本把真实错误提炼成 ::error:: 注解，
+      # 这样即便拿不到 job logs，也能从 check-runs annotations 读到错误原文。
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        shell: bash
+        run: |
+          mkdir -p ci-logs
+          gradle assembleDebug --no-daemon --stacktrace --console=plain \
+            > ci-logs/gradle-build.log 2>&1
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "gradle assembleDebug OK"
+            tail -n 40 ci-logs/gradle-build.log
+            exit 0
+          fi
+          echo "===== gradle 退出码 $rc ====="
+          tail -n 200 ci-logs/gradle-build.log
+          echo "===== 提炼错误要点 ====="
+          python3 .github/scripts/ci_extract_errors.py ci-logs/gradle-build.log
+          echo "$rc" > ci-logs/exit-code.txt
+          exit $rc
+
       # 关键闸门：packaging.merges 一旦漏配，APK 里就没有 META-INF/xposed/*，
       # LSPosed 列表里本模块会「根本不出现」且没有任何报错。所以构建完立刻验，
       # 不合格让 CI 直接失败，别让坏包流到真机上再去猜。
@@ -70,6 +93,15 @@ jobs:
           mkdir -p out
           cp "${{ steps.apk.outputs.path }}" "out/CoreGate-APK-debug-v2.2.2.apk"
           ls -l out
+
+      - name: Upload gradle log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: ci-logs/
+          if-no-files-found: warn
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
