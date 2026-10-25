@@ -61,6 +61,19 @@ object SysProbe {
         var littleMaxCur: Long = 0,
         /** policy6 scaling_max_freq */
         var bigMaxCur: Long = 0,
+        /**
+         * policy0 的真实合法档位表（kHz，升序）。
+         *
+         * 限频阈值可自定义后，滑杆必须吸附到内核真实认可的档位上 ——
+         * 本机频率档位不等比（小核 23 档、大核 21 档、GPU 17 档），
+         * 用百分比或 100MHz 步进算出来的值大概率不是合法档，
+         * 写进去会被内核直接回弹到邻近档，界面显示与实际永远对不上。
+         */
+        var littleAvail: List<Long> = emptyList(),
+        /** policy6 的真实合法档位表（kHz，升序）。 */
+        var bigAvail: List<Long> = emptyList(),
+        /** GPU 的真实合法档位表（Hz，升序）。 */
+        var gpuAvail: List<Long> = emptyList(),
         var dbg: String = "",
         /** root 是否可用（探针命令里 id -u 是否为 0） */
         var rootOk: Boolean = false,
@@ -100,12 +113,21 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
         // 簇上限
         c.append("echo \"LMAX:\"; cat /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq 2>/dev/null; ")
         c.append("echo \"BMAX:\"; cat /sys/devices/system/cpu/cpufreq/policy6/scaling_max_freq 2>/dev/null; ")
+        // 两簇的完整合法档位表（限频滑杆吸附用，一次 root 顺带取回，不额外开 su）
+        c.append("echo \"LAV:\"; cat /sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies 2>/dev/null; ")
+        c.append("echo \"BAV:\"; cat /sys/devices/system/cpu/cpufreq/policy6/scaling_available_frequencies 2>/dev/null; ")
         // GPU
         c.append("echo \"GCUR:\"; cat /sys/class/kgsl/kgsl-3d0/gpuclk 2>/dev/null; ")
         c.append("echo \"GMAX:\"; cat /sys/class/kgsl/kgsl-3d0/max_gpuclk 2>/dev/null; ")
         c.append("echo \"GPLV:\"; cat /sys/class/kgsl/kgsl-3d0/max_pwrlevel 2>/dev/null; ")
         c.append("echo \"GNUM:\"; cat /sys/class/kgsl/kgsl-3d0/num_pwrlevels 2>/dev/null; ")
         c.append("echo \"GDEVF:\"; cat /sys/class/kgsl/kgsl-3d0/devfreq/max_freq 2>/dev/null; ")
+        // GPU 完整档位表（Hz）：
+        //   主通道 gpu_available_frequencies（kgsl 标准节点，空格分隔，从高到低）；
+        //   备用通道 devfreq/available_frequencies（部分机型只暴露这个）。
+        // 两者都没有则留空，界面自动退化为「按 pwrlevel 档位」调节。
+        c.append("echo \"GAV:\"; cat /sys/class/kgsl/kgsl-3d0/gpu_available_frequencies 2>/dev/null; ")
+        c.append("echo \"GDAV:\"; cat /sys/class/kgsl/kgsl-3d0/devfreq/available_frequencies 2>/dev/null; ")
         // daemon 与 state
         //
         // ⚠️ 这里踩过一个很隐蔽的坑（缺陷 2「守护进程永远显示未运行」的根因）：
@@ -214,6 +236,16 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
             val gnum = line(out, "GNUM")
             if (!gnum.isNullOrEmpty()) s.gpuNumLevels = num(gnum).toInt()
 
+            // ── 合法档位表（限频可自定义后，界面滑杆要吸附到这些真实档位）──
+            s.littleAvail = parseFreqList(line(out, "LAV"))
+            s.bigAvail = parseFreqList(line(out, "BAV"))
+            // GPU 两条通道二选一：主通道为空才用 devfreq 备用通道
+            var gpuList = parseFreqList(line(out, "GAV"))
+            if (gpuList.isEmpty()) gpuList = parseFreqList(line(out, "GDAV"))
+            // kgsl 的 gpu_available_frequencies 是从高到低输出的，统一转成升序，
+            // 让上层「索引 0 = 最低档」这个约定对三类频率都成立。
+            s.gpuAvail = gpuList.sorted()
+
             val stateb = line(out, "DAEMON")
             // DEAD:0 里的 0 是占位符（不是真 pid），要还原成「未知 = -1」
             val aliveFromMark = stateb != null && stateb.startsWith("ALIVE:")
@@ -298,6 +330,23 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
         var nEnd = out.indexOf('\n', nStart)
         if (nEnd < 0) nEnd = out.length
         return out.substring(nStart, nEnd).trim()
+    }
+
+    /**
+     * 把 `scaling_available_frequencies` 这种「空格分隔的一串数字」解析成升序列表。
+     *
+     * 内核输出可能带前导/尾随空格，也可能一个值都没有（节点不存在 → line() 返回 null），
+     * 因此这里对空串、非数字片段一律跳过，解析失败就返回空列表由上层降级处理。
+     */
+    private fun parseFreqList(raw: String?): List<Long> {
+        if (raw.isNullOrBlank()) return emptyList()
+        val out = mutableListOf<Long>()
+        for (p in raw.trim().split(Regex("\\s+"))) {
+            val v = p.toLongOrNull() ?: continue
+            if (v > 0) out.add(v)
+        }
+        out.sort()
+        return out
     }
 
     private fun num(s: String?): Long {

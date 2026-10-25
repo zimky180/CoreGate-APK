@@ -44,6 +44,22 @@ data class CoreConfig(
     var pollInterval: Int = 30,
     /** 日常限频 */
     var limitFreq: Boolean = false,
+    /**
+     * 限频阈值（可自定义）。
+     *
+     * 前三项：0 表示「未自定义」，由 service.sh 用内置默认值兜底：
+     *   cap_little_mhz=2266 / cap_big_mhz=1651 / cap_gpu_mhz=500
+     * 写成 0 而不是留空，是为了让 cfg_int 拿到确定值 —— 缺字段时它会回退默认，
+     * 但显式 0 也能被 service.sh 识别成「没设过」，两条路都通。
+     *
+     * cap_gpu_pwrlevel 例外：0 是合法的最高性能档，无法用 0 当哨兵，
+     * 因此用 -1 表示「未设置」（缺键时 optInt/grabInt 也回退 -1），
+     * 只要是 >=0 就说明用户存过一个真实档位。
+     */
+    var capLittleMhz: Int = 0,
+    var capBigMhz: Int = 0,
+    var capGpuMhz: Int = 0,
+    var capGpuPwrLevel: Int = -1,
     /** 录屏 / 相机自动恢复 */
     var captureBoost: Boolean = false,
     /** 冻结：日志上报（六组，默认全关，由用户自己开） */
@@ -84,6 +100,11 @@ data class CoreConfig(
         put("no_lock_charging", noLockCharging)
         put("poll_interval", clampInterval(pollInterval))
         put("limit_freq", limitFreq)
+        // 限频阈值：0 交给 service.sh 兜底默认，非 0 即为用户自定义
+        put("cap_little_mhz", capLittleMhz)
+        put("cap_big_mhz", capBigMhz)
+        put("cap_gpu_mhz", capGpuMhz)
+        put("cap_gpu_pwrlevel", capGpuPwrLevel)
         put("capture_boost", captureBoost)
         // 冻结六组：键名必须与 service.sh 的 freeze_$1 拼出来的完全一致
         put("freeze_grp_log", freezeGrpLog)
@@ -119,6 +140,7 @@ data class CoreConfig(
         private val MANAGED_KEYS = setOf(
             "enabled", "lock_cores", "disable_core_ctl", "no_lock_charging",
             "poll_interval", "limit_freq", "capture_boost",
+            "cap_little_mhz", "cap_big_mhz", "cap_gpu_mhz", "cap_gpu_pwrlevel",
             "freeze_grp_log", "freeze_grp_media", "freeze_grp_cloud",
             "freeze_grp_diag", "freeze_grp_ad", "freeze_grp_self"
         )
@@ -143,6 +165,11 @@ data class CoreConfig(
                 c.noLockCharging = o.optBoolean("no_lock_charging", false)
                 c.pollInterval = clampInterval(o.optInt("poll_interval", 30))
                 c.limitFreq = o.optBoolean("limit_freq", false)
+                // 限频阈值：0（前三项）/ -1（pwrlevel）视为「未自定义」，由 service.sh 兜底
+                c.capLittleMhz = o.optInt("cap_little_mhz", 0)
+                c.capBigMhz = o.optInt("cap_big_mhz", 0)
+                c.capGpuMhz = o.optInt("cap_gpu_mhz", 0)
+                c.capGpuPwrLevel = o.optInt("cap_gpu_pwrlevel", -1)
                 c.captureBoost = o.optBoolean("capture_boost", false)
                 // 冻结六组，默认全关；用户自己开过才为 true
                 c.freezeGrpLog = o.optBoolean("freeze_grp_log", false)
@@ -165,6 +192,10 @@ data class CoreConfig(
             c.noLockCharging = grabBool(s, "no_lock_charging", false)
             c.pollInterval = clampInterval(grabInt(s, "poll_interval", 30))
             c.limitFreq = grabBool(s, "limit_freq", false)
+            c.capLittleMhz = grabInt(s, "cap_little_mhz", 0)
+            c.capBigMhz = grabInt(s, "cap_big_mhz", 0)
+            c.capGpuMhz = grabInt(s, "cap_gpu_mhz", 0)
+            c.capGpuPwrLevel = grabInt(s, "cap_gpu_pwrlevel", -1)
             c.captureBoost = grabBool(s, "capture_boost", false)
             c.freezeGrpLog = grabBool(s, "freeze_grp_log", false)
             c.freezeGrpMedia = grabBool(s, "freeze_grp_media", false)

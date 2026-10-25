@@ -107,14 +107,14 @@ jobs:
           APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           echo "Found APK: $APK"
           mkdir -p out
-          cp "$APK" "out/CoreGate-APK-debug-v2.2.3.apk"
+          cp "$APK" "out/CoreGate-APK-debug-v2.2.4.apk"
           ls -l out
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-APK-debug-v2.2.3
-          path: out/CoreGate-APK-debug-v2.2.3.apk
+          name: CoreGate-APK-debug-v2.2.4
+          path: out/CoreGate-APK-debug-v2.2.4.apk
           if-no-files-found: error
 
 
@@ -124,8 +124,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
-          TAG=v2.2.3
+          TAG=v2.2.4
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" -t "CoreGate APK $TAG" -n "CI build"
-          gh release upload "$TAG" out/CoreGate-APK-debug-v2.2.3.apk --clobber
+          gh release upload "$TAG" out/CoreGate-APK-debug-v2.2.4.apk --clobber
           echo "release upload done"
           exit 0
