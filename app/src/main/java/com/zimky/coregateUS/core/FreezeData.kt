@@ -113,7 +113,22 @@ object FreezeData {
             risky = true,
             desc = "作者在 ColorOS 16.0.1.306 上实测确认可正常开机后原样收录的 52 个包。" +
                 "其他系统版本不保证能正常进系统。"
-        )
+        ),
+        Group(key = "ai", name = "AI 附加功能",
+            pkgs = listOf("com.oplus.aimemory", "com.oplus.aiunit", "com.oplus.aiwidgets", "com.oplus.aiwriter", "com.oplus.metis", "com.oplus.obrain"),
+            desc = "关闭后对应 AI 助手、写作和记忆功能不可用。"),
+        Group(key = "voice", name = "语音助手",
+            pkgs = listOf("com.oplus.ovoicemanager", "com.oplus.ovoicemanager.wakeup", "com.heytap.speechassist"),
+            desc = "关闭后语音助手和语音唤醒不可用。"),
+        Group(key = "games", name = "游戏空间",
+            pkgs = listOf("com.oplus.games", "com.oplus.cosa"),
+            desc = "关闭后游戏空间及厂商游戏调度功能不可用，不影响 CoreGate 游戏名单检测。"),
+        Group(key = "themes", name = "主题与杂志",
+            pkgs = listOf("com.oplus.themestore", "com.heytap.themestore", "com.heytap.pictorial"),
+            desc = "关闭后主题商店与锁屏杂志不可用。"),
+        Group(key = "search", name = "桌面搜索与负一屏",
+            pkgs = listOf("com.heytap.quicksearchbox", "com.coloros.assistantscreen", "com.coloros.ocs.opencapabilityservice"),
+            desc = "关闭后全局搜索、负一屏和相关卡片不可用。")
     )
 
     /**
@@ -142,7 +157,7 @@ object FreezeData {
          * 数据来自 `pm list packages -d`，**包含用户自己在系统设置里手动停用的应用**，
          * 不等于本模块冻结的数量 —— 只适合作背景参考，不要直接当「已冻结 N 个」展示。
          */
-        val systemDisabledCount: Int by lazy { actual.size }
+        val systemDisabledCount: Int by lazy { actual.keys.count { it !in inScopeFrozen } }
 
         /**
          * 落在本模块作用域内的冻结包：`actual` 里出现、且属于 [GROUPS] 任一组的包。
@@ -209,7 +224,7 @@ object FreezeData {
                 }
                 "groups" -> {
                     if (parts.size >= 2) {
-                        groups[parts[0].trim()] = parts[1].trim() == "on"
+                        groups[parts[0].trim().removePrefix("grp_")] = parts[1].trim() == "on"
                     }
                 }
             }

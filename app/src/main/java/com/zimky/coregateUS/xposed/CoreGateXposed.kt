@@ -169,6 +169,7 @@ class CoreGateXposed : XposedModule() {
         if (!param.isFirstPackage) return
 
         val pkg = param.packageName
+        if (pkg != "com.ss.android.ugc.aweme") return
         refreshCfg(pkg, true)
         if (!active) {
             log(Log.INFO, TAG, "包 " + pkg + " 不在生效范围，跳过")

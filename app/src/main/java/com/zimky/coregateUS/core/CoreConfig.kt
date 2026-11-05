@@ -2,14 +2,13 @@ package com.zimky.coregateUS.core
 
 import android.util.Base64
 import org.json.JSONObject
-import java.io.File
 
 /**
  * CoreConfig —— config.json / packages.txt 的读写。
  *
- * ⚠ 血泪教训：必须把 7 个字段全部写回。
+ * ⚠ 血泪教训：必须把 App 管理的字段全部写回。
  * service.sh 的 cfg_bool / cfg_int / cfg_val 在字段缺失时直接回退默认值，
- * 旧版 config.example.json 只有 7 个字段里的少数几个，
+ * 旧版配置示例缺少部分字段，
  * 一旦 APK 只写自己认识的字段，capture_boost 就会被静默关掉。
  * 所以 toJson() 永远输出全字段。
  *
@@ -27,7 +26,6 @@ object Paths {
 
     const val MODULE_DIR = "/data/adb/modules/CoreGate"
     const val SERVICE = "$MODULE_DIR/service.sh"
-    const val WEBROOT = "$MODULE_DIR/webroot"
 }
 
 /** 字段与 service.sh 一一对应，不要改名。 */
@@ -86,7 +84,7 @@ data class CoreConfig(
      */
     var rawExtra: Map<String, Any?>? = null
 ) {
-    /** 永远输出全部 7 个 App 管理字段，并保留 App 不认识的其它键。 */
+    /** 永远输出全部 App 管理字段，并保留 App 不认识的其它键。 */
     fun toJson(): JSONObject = JSONObject().apply {
         // 先铺回磁盘上原有的、App 不负责的键（如 auto_lock_count）
         rawExtra?.forEach { (k, v) ->
@@ -265,17 +263,24 @@ data class CoreConfig(
             sb.append("CFG='").append(base64(cfg.toJsonString())).append("'; ")
             sb.append("echo \"\$CFG\" | base64 -d > ").append(Paths.FILE).append(".tmp && ")
             sb.append("mv ").append(Paths.FILE).append(".tmp ").append(Paths.FILE).append(" && ")
-            sb.append("chmod 644 ").append(Paths.FILE).append("; ")
+            sb.append("chmod 644 ").append(Paths.FILE).append(" || exit 1; ")
 
             if (packages != null) {
                 sb.append("PKG='").append(base64(packages)).append("'; ")
                 sb.append("echo \"\$PKG\" | base64 -d > ").append(Paths.PACKAGES).append(".tmp && ")
                 sb.append("mv ").append(Paths.PACKAGES).append(".tmp ").append(Paths.PACKAGES).append(" && ")
-                sb.append("chmod 644 ").append(Paths.PACKAGES).append("; ")
+                sb.append("chmod 644 ").append(Paths.PACKAGES).append(" || exit 1; ")
             }
 
-            sb.append("sync; echo OK")
-            return sb.toString()
+            sb.append("echo OK")
+            return "mkdir -p " + Paths.DIR + " && ( " +
+                "CG_LOCK='" + Paths.DIR + "/freeze.lock'; cg_wait=0; " +
+                "while ! mkdir \"\$CG_LOCK\" 2>/dev/null; do " +
+                "cg_wait=\$((cg_wait+1)); [ \"\$cg_wait\" -lt 30 ] || exit 1; sleep 1; done; " +
+                "echo \$\$ > \"\$CG_LOCK/pid\"; " +
+                "trap 'rm -f \"\$CG_LOCK/pid\"; rmdir \"\$CG_LOCK\" 2>/dev/null' EXIT; " +
+                sb.toString() + " )"
+
         }
         /**
          * 一次 root 调用取回 config.json + packages.txt。
@@ -358,45 +363,5 @@ data class CoreConfig(
             }
             return sb.toString()
         }
-    }
-}
-/**
- * 已废弃：模块就位判定已并入 [SysProbe.probe]（见 `Snapshot.svcState`）。
- *
- * 保留这个函数只是为了让老调用点不会因为「找不到符号」而编译失败，
- * 但**新代码一律不要再调用它**，理由有两条：
- *   1) 它自己起一次 su，而 probe 已经在同一次 root 调用里顺带读到了结果，
- *      多开一个 root 请求既慢又容易触发安全机制的误判；
- *   2) 两条判定路径并存时，一旦其中一条拿到空输出，页面之间就会出现
- *      「核心在线但模块缺失」这种自相矛盾的显示。
- *
- * 正确用法（三态，谁都不许再把 null 当 false）：
- * ```
- * val svc = snapshot?.svcState ?: SysProbe.svcCache   // true / false / null
- * ```
- */
-@Deprecated(
-    message = "改用 SysProbe 的 Snapshot.svcState / SysProbe.svcCache",
-    replaceWith = ReplaceWith("SysProbe.svcCache"),
-    level = DeprecationLevel.WARNING
-)
-fun serviceExists(sh: RootShell? = null, cb: (Boolean?) -> Unit) {
-    val cmd = "if [ -f ${Paths.SERVICE} ]; then echo CG_SVC_YES; " +
-        "elif [ -d ${Paths.MODULE_DIR} ]; then echo CG_SVC_NODIR; " +
-        "else echo CG_SVC_NO; fi"
-    if (sh == null) {
-        cb(null)
-        return
-    }
-    sh.exec(cmd) { _, out, _ ->
-        val o = out
-        cb(
-            when {
-                o.contains("CG_SVC_YES") -> true
-                o.contains("CG_SVC_NODIR") -> false
-                o.contains("CG_SVC_NO") -> false
-                else -> null   // su 没输出，判不了 —— 绝不误报「缺失」
-            }
-        )
     }
 }

@@ -85,14 +85,14 @@ object SpoofData {
         /** 总开关；关闭时不 hook，系统原样 */
         var enabled: Boolean = false,
         /** 生效范围包名列表，默认为空（不额外过滤） */
-        var scopePackages: List<String> = emptyList()
+        var scopePackages: List<String> = listOf("com.ss.android.ugc.aweme")
     ) {
         fun toJsonString(): String {
             val o = JSONObject()
             o.put("enabled", enabled)
             o.put("profile", OPPO_A5.toJson())
             val arr = org.json.JSONArray()
-            scopePackages.forEach { arr.put(it) }
+            arr.put("com.ss.android.ugc.aweme")
             o.put("scope_packages", arr)
             return o.toString()
         }
@@ -147,15 +147,15 @@ object SpoofData {
              */
             fun buildSaveCmd(st: State): String =
                 "CFG='" + CoreConfig.base64(st.toJsonString()) + "'; " +
-                    "mkdir -p " + Paths.DIR + "; " +
+                    "mkdir -p " + Paths.DIR + " && " +
                     "echo \"\$CFG\" | base64 -d > " + FILE + ".tmp && " +
                     "mv " + FILE + ".tmp " + FILE + " && " +
-                    "chmod 644 " + FILE + "; " +
+                    "chmod 644 " + FILE + " && " +
                     "mkdir -p " + MIRROR_DIR + " && " +
                     "cp -f " + FILE + " " + MIRROR_FILE + " && " +
                     "chmod 755 " + MIRROR_DIR + " && " +
-                    "chmod 644 " + MIRROR_FILE + "; " +
-                    "sync; echo OK"
+                    "chmod 644 " + MIRROR_FILE + " && " +
+                    "echo OK"
 
             /** 一次 root 调用把 spoof.json 读回来 */
             fun load(sh: RootShell, cb: (State) -> Unit) {

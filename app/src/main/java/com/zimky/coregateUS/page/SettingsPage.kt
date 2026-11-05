@@ -43,6 +43,10 @@ import com.zimky.coregateUS.core.LogReader
 import com.zimky.coregateUS.core.Paths
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.PageHeading
+import com.zimky.coregateUS.ui.SectionHeading
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.CardDivider
 import com.zimky.coregateUS.ui.Gap
@@ -138,6 +142,8 @@ fun SettingsPage(
 
     // ── 诊断刷新计数，点一次变一次 ──
     var diagTick by remember { mutableStateOf(0) }
+    var logsExpanded by rememberSaveable { mutableStateOf(false) }
+    var diagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -149,16 +155,15 @@ fun SettingsPage(
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+
+        PageHeading("设置", "模块管理、游戏名单与调试")
 
         // ── 卡片一：模块总开关 ───────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "模块总开关", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 SwitchRow(
                     title = "启用 CoreGate",
                     desc = if (cfg.enabled) {
@@ -211,11 +216,13 @@ fun SettingsPage(
             }
         }
 
+        SectionHeading("游戏名单", "名单内的应用会触发全部核心恢复")
+
         // ── 卡片：包名查询 ────────────────────────────────────────────
         // 装完模块最常干的事：确认某个游戏到底进没进名单。
         // 以前只能对着一大段文本肉眼找，这里给一个即时查询。
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Text(text = "包名查询", color = cs.onSurface, fontSize = 16.sp)
                 Gap(10.dp)
                 SubText("确认某个应用是否已在游戏名单里，没在就一键加进去。")
@@ -270,12 +277,8 @@ fun SettingsPage(
                         }
                     }
                 }
-            }
-        }
-        // ── 卡片二：游戏名单 ─────────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "游戏名单", color = cs.onSurface, fontSize = 16.sp)
+                CardDivider()
+                Text(text = "编辑名单", color = cs.onSurface, fontSize = 16.sp)
                 Gap(10.dp)
                 SubText("每行一个包名。命中名单时模块会自动放开全部核心，退出后恢复锁核。")
                 Gap(10.dp)
@@ -326,190 +329,206 @@ fun SettingsPage(
             }
         }
 
+        SectionHeading("调试工具", "按需展开日志与诊断信息")
+
         // ── 卡片三：模块日志 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "模块日志", color = cs.onSurface, fontSize = 16.sp)
-                Gap(10.dp)
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                NavRow(
+                    title = "模块日志",
+                    summary = if (logsExpanded) "收起" else "展开",
+                    onClick = { logsExpanded = !logsExpanded }
+                )
+                AnimatedVisibility(visible = logsExpanded) {
+                    Column {
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    TextButton(
-                        text = if (logBusy) "读取中…" else "读取日志",
-                        onClick = {
-                            if (logBusy) return@TextButton
-                            logBusy = true
-                            LogReader.tail(sh, 160) { text, from, found ->
-                                logBusy = false
-                                if (!found) {
-                                    logText = ""
-                                    logFrom = ""
-                                    Toaster.show("四个日志路径都没有文件", true)
-                                } else {
-                                    logText = text
-                                    logFrom = from
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            TextButton(
+                                text = if (logBusy) "读取中…" else "读取日志",
+                                onClick = {
+                                    if (logBusy) return@TextButton
+                                    logBusy = true
+                                    LogReader.tail(sh, 160) { text, from, found ->
+                                        logBusy = false
+                                        if (!found) {
+                                            logText = ""
+                                            logFrom = ""
+                                            Toaster.show("四个日志路径都没有文件", true)
+                                        } else {
+                                            logText = text
+                                            logFrom = from
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.textButtonColorsPrimary()
+                            )
+                            TextButton(
+                                text = "清空日志",
+                                onClick = {
+                                    LogReader.clear(sh) { code, _, _ ->
+                                        if (code == 0) {
+                                            logText = ""
+                                            Toaster.show("日志已清空")
+                                        } else {
+                                            Toaster.show("清空失败，退出码 $code", true)
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.textButtonColorsPrimary()
+                            )
+                        }
+
+                        Gap(10.dp)
+                        if (logFrom.isNotEmpty()) {
+                            HintText(logFrom)
+                            Gap(6.dp)
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .background(cs.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                                .border(1.dp, cs.outline, RoundedCornerShape(12.dp))
+                                .padding(10.dp)
+                        ) {
+                            if (logText.isEmpty()) {
+                                HintText("还没读取日志。点上方「读取日志」拉取最近 160 行。")
+                            } else {
+                                SelectionContainer {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        MonoText(logText)
+                                    }
                                 }
-                            }
-                        },
-                        colors = ButtonDefaults.textButtonColorsPrimary()
-                    )
-                    TextButton(
-                        text = "清空日志",
-                        onClick = {
-                            LogReader.clear(sh) { code, _, _ ->
-                                if (code == 0) {
-                                    logText = ""
-                                    Toaster.show("日志已清空")
-                                } else {
-                                    Toaster.show("清空失败，退出码 $code", true)
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.textButtonColorsPrimary()
-                    )
-                }
-
-                Gap(10.dp)
-                if (logFrom.isNotEmpty()) {
-                    HintText(logFrom)
-                    Gap(6.dp)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp)
-                        .background(cs.surfaceContainerHigh, RoundedCornerShape(12.dp))
-                        .border(1.dp, cs.outline, RoundedCornerShape(12.dp))
-                        .padding(10.dp)
-                ) {
-                    if (logText.isEmpty()) {
-                        HintText("还没读取日志。点上方「读取日志」拉取最近 160 行。")
-                    } else {
-                        SelectionContainer {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .verticalScroll(rememberScrollState())
-                            ) {
-                                MonoText(logText)
                             }
                         }
+
+                        Gap(8.dp)
+                        HintText(
+                            "按顺序回退查找：modules/…/log、modules_update/…/log、CoreGate/log、CoreGate/ 根目录。"
+                        )
                     }
                 }
-
-                Gap(8.dp)
-                HintText(
-                    "按顺序回退查找：modules/…/log、modules_update/…/log、CoreGate/log、CoreGate/ 根目录。"
-                )
             }
         }
 
         // ── 卡片四：诊断 ─────────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "诊断", color = cs.onSurface, fontSize = 16.sp)
-                Gap(10.dp)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    HintText("点一次采集一次，不发自动请求")
-                    Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
-                        TextButton(
-                            text = "刷新诊断",
-                            onClick = {
-                                diagTick++
-                                Toaster.show("已采集")
-                            },
-                            colors = ButtonDefaults.textButtonColorsPrimary()
-                        )
-                    }
-                }
-                // diagTick 参与读取，保证刷新按钮能触发重组
-                @Suppress("UNUSED_EXPRESSION") diagTick
-
-                CardDivider()
-
-                // ① 运行环境
-                // 三态：已找到 / 缺失 / 未知（还没探测过），不再把「没探测」误报成「缺失」
-                KeyValueRow(
-                    "模块目录",
-                    when (s?.svcState ?: SysProbe.svcCache) {
-                        true -> "已找到"
-                        false -> "缺失"
-                        null -> "未知（未探测）"
-                    }
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                NavRow(
+                    title = "诊断",
+                    summary = if (diagnosticsExpanded) "收起" else "展开",
+                    onClick = { diagnosticsExpanded = !diagnosticsExpanded }
                 )
-                KeyValueRow("service.sh", Paths.SERVICE)
-                KeyValueRow("配置", Paths.FILE)
-                KeyValueRow("配置已读", if (cfg.loaded) "是" else "否（读取失败）")
-                KeyValueRow(
-                    "Root 授权",
-                    when {
-                        s == null -> "未探测"
-                        s!!.rootOk -> if (s!!.rootId.isNotEmpty()) "已提权 · ${s!!.rootId}" else "已提权"
-                        else -> "未通过（su 没有返回 uid 0）"
-                    }
-                )
+                AnimatedVisibility(visible = diagnosticsExpanded) {
+                    Column {
 
-                Gap(8.dp)
-                HairLine()
-                Gap(8.dp)
-
-                // ② 守护进程
-                KeyValueRow("守护进程", if (daemonAlive) "存活" else "未运行")
-                KeyValueRow("PID", if ((s?.daemonPid ?: -1) > 0) s!!.daemonPid.toString() else "—")
-
-                Gap(8.dp)
-                HairLine()
-                Gap(8.dp)
-
-                // ③ 频率上限
-                KeyValueRow("小核上限", SysProbe.fmtMhz(s?.littleMaxCur ?: 0))
-                KeyValueRow("大核上限", SysProbe.fmtMhz(s?.bigMaxCur ?: 0))
-                KeyValueRow("GPU 上限", SysProbe.fmtGpu(s?.gpuMax ?: 0))
-
-                val dbg = s?.dbg?.trim().orEmpty()
-                if (dbg.isNotEmpty()) {
-                    Gap(8.dp)
-                    HairLine()
-                    Gap(8.dp)
-                    SubText("探测输出")
-                    Gap(6.dp)
-                    SelectionContainer {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 180.dp)
-                                .verticalScroll(rememberScrollState())
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            MonoText(dbg.take(600))
-                        }
-                    }
-                }
-
-                val hist = RootShell.history().take(8)
-                if (hist.isNotEmpty()) {
-                    Gap(8.dp)
-                    HairLine()
-                    Gap(8.dp)
-                    SubText("最近 ${hist.size} 条命令")
-                    Gap(6.dp)
-                    SelectionContainer {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            hist.forEach { r ->
-                                val cmd = if (r.cmd.length > 70) r.cmd.take(70) + "…" else r.cmd
-                                val color = if (r.exit == 0) cs.onSurfaceVariantSummary else Semantic.ERR
-                                MonoText(
-                                    "[${r.exit}] ${r.costMs}ms  $cmd",
-                                    color = color,
-                                    modifier = Modifier.padding(vertical = 1.dp)
+                            HintText("点一次采集一次，不发自动请求")
+                            Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+                                TextButton(
+                                    text = "刷新诊断",
+                                    onClick = {
+                                        diagTick++
+                                        Toaster.show("已采集")
+                                    },
+                                    colors = ButtonDefaults.textButtonColorsPrimary()
                                 )
+                            }
+                        }
+                        // diagTick 参与读取，保证刷新按钮能触发重组
+                        @Suppress("UNUSED_EXPRESSION") diagTick
+
+                        CardDivider()
+
+                        // ① 运行环境
+                        // 三态：已找到 / 缺失 / 未知（还没探测过），不再把「没探测」误报成「缺失」
+                        KeyValueRow(
+                            "模块目录",
+                            when (s?.svcState ?: SysProbe.svcCache) {
+                                true -> "已找到"
+                                false -> "缺失"
+                                null -> "未知（未探测）"
+                            }
+                        )
+                        KeyValueRow("service.sh", Paths.SERVICE)
+                        KeyValueRow("配置", Paths.FILE)
+                        KeyValueRow("配置已读", if (cfg.loaded) "是" else "否（读取失败）")
+                        KeyValueRow(
+                            "Root 授权",
+                            when {
+                                s == null -> "未探测"
+                                s!!.rootOk -> if (s!!.rootId.isNotEmpty()) "已提权 · ${s!!.rootId}" else "已提权"
+                                else -> "未通过（su 没有返回 uid 0）"
+                            }
+                        )
+
+                        Gap(8.dp)
+                        HairLine()
+                        Gap(8.dp)
+
+                        // ② 守护进程
+                        KeyValueRow("守护进程", if (daemonAlive) "存活" else "未运行")
+                        KeyValueRow("PID", if ((s?.daemonPid ?: -1) > 0) s!!.daemonPid.toString() else "—")
+
+                        Gap(8.dp)
+                        HairLine()
+                        Gap(8.dp)
+
+                        // ③ 频率上限
+                        KeyValueRow("小核上限", SysProbe.fmtMhz(s?.littleMaxCur ?: 0))
+                        KeyValueRow("大核上限", SysProbe.fmtMhz(s?.bigMaxCur ?: 0))
+                        KeyValueRow("GPU 上限", SysProbe.fmtGpu(s?.gpuMax ?: 0))
+
+                        val dbg = s?.dbg?.trim().orEmpty()
+                        if (dbg.isNotEmpty()) {
+                            Gap(8.dp)
+                            HairLine()
+                            Gap(8.dp)
+                            SubText("探测输出")
+                            Gap(6.dp)
+                            SelectionContainer {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 180.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    MonoText(dbg.take(600))
+                                }
+                            }
+                        }
+
+                        val hist = RootShell.history().take(8)
+                        if (hist.isNotEmpty()) {
+                            Gap(8.dp)
+                            HairLine()
+                            Gap(8.dp)
+                            SubText("最近 ${hist.size} 条命令")
+                            Gap(6.dp)
+                            SelectionContainer {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    hist.forEach { r ->
+                                        val cmd = if (r.cmd.length > 70) r.cmd.take(70) + "…" else r.cmd
+                                        val color = if (r.exit == 0) cs.onSurfaceVariantSummary else Semantic.ERR
+                                        MonoText(
+                                            "[${r.exit}] ${r.costMs}ms  $cmd",
+                                            color = color,
+                                            modifier = Modifier.padding(vertical = 1.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -517,15 +536,17 @@ fun SettingsPage(
             }
         }
 
+        SectionHeading("关于与支持")
+
         // ── 卡片五：关于 ─────────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Text(text = "关于", color = cs.onSurface, fontSize = 16.sp)
                 Gap(10.dp)
 
                 KeyValueRow("名称", "CoreGate")
                 KeyValueRow("作者", "zimky")
-                KeyValueRow("版本", "2.2.3")
+                KeyValueRow("版本", ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName.orEmpty())
                 KeyValueRow("模块目录", Paths.MODULE_DIR)
                 KeyValueRow("数据目录", Paths.DIR)
 
@@ -543,7 +564,7 @@ fun SettingsPage(
         // 放在最底部：属于「想看才看」的内容，不占日常视野。
         // 点击走系统 Intent；打不开（没装酷安/QQ/浏览器）才弹提示兜底。
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Text(text = "联系作者 / 反馈与建议", color = cs.onSurface, fontSize = 16.sp)
                 Gap(4.dp)
 

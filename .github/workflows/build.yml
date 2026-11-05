@@ -1,15 +1,14 @@
 name: Build CoreGate APK
 on:
   push:
-    branches: [ main ]
+    branches: [ main, ci-build ]
   workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       actions: read
-      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,20 +66,6 @@ jobs:
           path: ci-logs/
           if-no-files-found: warn
 
-      - name: Publish log to issue
-        if: always()
-        shell: bash
-        env:
-          GH_LOG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_RUN: ${{ github.run_id }}
-          GH_SHA: ${{ github.sha }}
-        run: |
-          if [ -f ci-logs/gradle-build.log ]; then
-            GITHUB_TOKEN="$GH_LOG_TOKEN" python3 .github/scripts/report_log_to_issue.py ci-logs/gradle-build.log || echo "issue report failed"
-          else
-            echo "no log file"
-          fi
-
       - name: Fail if gradle failed
         shell: bash
         run: |
@@ -116,16 +101,3 @@ jobs:
           name: CoreGate-APK-debug-v2.2.4
           path: out/CoreGate-APK-debug-v2.2.4.apk
           if-no-files-found: error
-
-
-      - name: Upload APK to Release
-        if: success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set +e
-          TAG=v2.2.4
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" -t "CoreGate APK $TAG" -n "CI build"
-          gh release upload "$TAG" out/CoreGate-APK-debug-v2.2.4.apk --clobber
-          echo "release upload done"
-          exit 0

@@ -35,6 +35,10 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.ModuleBridge
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.PageHeading
+import com.zimky.coregateUS.ui.SectionHeading
+import com.zimky.coregateUS.ui.SummaryMetric
+import com.zimky.coregateUS.ui.NavRow
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.CoreCell
 import com.zimky.coregateUS.ui.Gap
@@ -114,18 +118,27 @@ fun LockPage(
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+
+        PageHeading("核心门控", "运行概览与核心控制")
 
         // ── 卡片一：锁核运行状态 ─────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                Text(text = "运行状态", color = cs.onSurfaceVariantSummary, fontSize = 13.sp)
+                Gap(12.dp)
                 when {
+                    s == null -> {
+                        StateBadge("读取中", cs.onSurfaceVariantSummary)
+                        Gap(10.dp)
+                        Text(text = "正在读取模块状态", color = cs.onSurface, fontSize = 22.sp)
+                    }
                     !daemonAlive -> {
                         StateBadge("未运行", cs.error)
                         Gap(10.dp)
-                        Text(text = "守护进程未启动", color = cs.onSurface, fontSize = 15.sp)
+                        Text(text = "守护进程未启动", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                         Gap(6.dp)
                         Text(
                             text = "模块可能已被禁用，或安装后尚未重启。可尝试重新刷入模块并重启设备。",
@@ -137,7 +150,7 @@ fun LockPage(
                     locked -> {
                         BreathingBadge("锁核中", cs.primary)
                         Gap(10.dp)
-                        Text(text = "已封锁 $bigOnline 个核心", color = cs.onSurface, fontSize = 15.sp)
+                        Text(text = "已封锁 ${total - onlineCount} 个核心", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                         Gap(6.dp)
                         Text(
                             text = "当前前台应用未被识别为游戏/录屏，空闲大核已离线以节省功耗。",
@@ -149,7 +162,7 @@ fun LockPage(
                     else -> {
                         StateBadge("全核在线", Semantic.ACC)
                         Gap(10.dp)
-                        Text(text = "全部核心在线", color = cs.onSurface, fontSize = 15.sp)
+                        Text(text = "全部核心在线", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                         Gap(6.dp)
                         Text(
                             text = "当前处于游戏或录屏/相机场景，或模块已禁用锁核，性能已全部放开。",
@@ -160,7 +173,13 @@ fun LockPage(
                     }
                 }
 
-                Gap(12.dp)
+                Gap(18.dp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SummaryMetric("在线核心", if (s == null) "—" else "$onlineCount / $total", Modifier.weight(1f))
+                    SummaryMetric("在线大核", if (s == null) "—" else "$bigOnline", Modifier.weight(1f))
+                    SummaryMetric("已冻结", frozenCount?.toString() ?: "—", Modifier.weight(1f))
+                }
+                Gap(16.dp)
                 HairLine()
                 Gap(10.dp)
 
@@ -175,69 +194,11 @@ fun LockPage(
             }
         }
 
-        // ── 卡片二：冻结状态（独立一框）───────────────────────────────
-        // 数字取 FreezeData.Snapshot.scopedFrozenCount —— 「本模块作用域内、且系统里确实冻上了」
-        // 的交集，不是「打算冻几个」。用户要看的是真冻没冻上，所以必须是前者。
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "冻结",
-                        color = cs.onSurface,
-                        fontSize = 16.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    when {
-                        frozenCount == null -> StateBadge("还没探到", cs.onSurfaceVariantSummary)
-                        frozenCount == 0 -> StateBadge("没有冻结", cs.onSurfaceVariantSummary)
-                        else -> StateBadge("已冻结 $frozenCount 个", Semantic.OK)
-                    }
-                }
-                Gap(8.dp)
-                Text(
-                    text = when {
-                        frozenCount == null -> "正在读取冻结状态，稍等一下"
-                        frozenCount == 0 -> "当前没有冻结任何服务"
-                        else -> "已冻结 $frozenCount 个服务"
-                    },
-                    color = cs.onSurface,
-                    fontSize = 14.sp,
-                    lineHeight = 19.sp
-                )
-
-                // 逐项明细本页拿不到（那需要 --freeze-status 的 actual 段，只有二级页真正解析），
-                // 所以这里只给入口，不臆造列表。
-                Gap(6.dp)
-                Text(
-                    text = "每组每个包是否真的冻结成功，点进去逐项看。",
-                    color = cs.onSurfaceVariantSummary,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
-                )
-                Gap(10.dp)
-                HairLine()
-                Gap(10.dp)
-                TextButton(
-                    text = "查看冻结明细",
-                    onClick = onOpenFreeze,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.textButtonColorsPrimary()
-                )
-            }
-        }
+        SectionHeading("核心控制", "点击核心查看封锁或恢复操作")
 
         // ── 卡片三：核心状态 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(
-                    text = "核心状态",
-                    color = cs.onSurface,
-                    fontSize = 16.sp
-                )
-                Gap(10.dp)
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
 
                 val littleMax = s?.littleMaxCur ?: 0L
                 val bigMax = s?.bigMaxCur ?: 0L
@@ -246,6 +207,11 @@ fun LockPage(
                     color = cs.onSurfaceVariantSummary,
                     fontSize = 12.sp,
                     lineHeight = 17.sp
+                )
+                val target = com.zimky.coregateUS.core.FreqCap.Targets.from(cfg)
+                Text(
+                    text = "日常目标 · 小核 ${target.effLittle} MHz · 大核 ${target.effBig} MHz · GPU ${target.effGpu} MHz",
+                    color = cs.onSurfaceVariantSummary, fontSize = 11.5.sp, lineHeight = 17.sp
                 )
                 Gap(12.dp)
 
@@ -311,13 +277,31 @@ fun LockPage(
             }
         }
 
+        SectionHeading("后台管理")
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                NavRow(
+                    title = "冻结管理",
+                    summary = when (frozenCount) {
+                        null -> "正在读取状态"
+                        0 -> "当前没有冻结任何服务"
+                        else -> "已冻结 $frozenCount 个服务"
+                    },
+                    onClick = onOpenFreeze
+                )
+            }
+        }
+
         // ── 卡片四：锁核建议 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Text(text = "锁核建议", color = cs.onSurface, fontSize = 16.sp)
                 Gap(10.dp)
 
                 when {
+                    s == null -> {
+                        Text(text = "读取核心状态后显示建议。", color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
+                    }
                     !daemonAlive -> {
                         StateBadge("不可用", cs.error)
                         Gap(10.dp)
@@ -342,8 +326,7 @@ fun LockPage(
                         StateBadge("建议封锁 $bigOnline 个", Semantic.WARN)
                         Gap(10.dp)
                         Text(
-                            text = "检测到 $bigOnline 个大核仍在线（共 $littleOnline 个小核在线）。大核是功耗大头，" +
-                                "日常场景下封掉它们能明显降低待机与轻度使用的功耗；进入游戏或录屏/相机时模块会自动恢复全部核心。",
+                            text = "当前有 $bigOnline 个大核在线。是否增加封锁数量，请结合流畅度和功耗决定。",
                             color = cs.onSurfaceVariantSummary,
                             fontSize = 12.sp,
                             lineHeight = 17.sp

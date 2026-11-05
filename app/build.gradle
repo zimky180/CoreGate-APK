@@ -81,10 +81,7 @@ dependencies {
 
     implementation libs.material.kolor
 
-    // libxposed：运行时由 Xposed 框架提供，绝不能打进 APK（打进会与框架自身类冲突）。
-    // 官方 README 的模块开发者写法只有这一条：
-    //   compileOnly("io.github.libxposed:api:102.0.0")
-    // service 是给「写 Xposed 框架本身」的人用的（framework developers 用 implementation），
-    // 模块侧不引用它的任何类。之前多挂一条 service 是噪音，已删除。
+    // Hook API is supplied by the framework; service is the module app communication client.
     compileOnly libs.libxposed.api
+    implementation libs.libxposed.service
 }

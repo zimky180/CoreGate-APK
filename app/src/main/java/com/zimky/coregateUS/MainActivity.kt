@@ -6,6 +6,8 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -115,88 +117,24 @@ private object SubPage {
 /** 底栏四栏文案。 */
 private val TAB_TITLES = listOf("锁核", "策略", "限频", "设置")
 
-/**
- * 页面槽位：四页常驻 composition，切 Tab 只切换可见性，不销毁重建。
- *
- * 之前误写成 `if (visible) content()`，每次切 Tab 都会销毁整棵子树，
- * 滚动位置和输入框内容全部丢失，与类注释里「滚动位置与输入内容都不丢」的承诺不符。
- *
- * 现在改为常驻 + 不可见 + 不可交互：
- *   - 用 graphicsLayer 的 alpha 而不是 draw.alpha，配合 zIndex 让可见页压在最上层；
- *   - 隐藏页不再挂 pointerInput —— 旧写法 `Modifier.pointerInput(Unit) {}` 并不会
- *     禁用命中测试，它只是注册了一个什么都不做的 pointer input node，
- *     指针事件照样会落进来（Compose 的 alpha 不参与 hit test 裁剪），
- *     结果是隐藏页的 verticalScroll 会和可见页抢手势，
- *     表现就是「部分页面滑不动」。改为隐藏页整块不参与命中测试。
- *   - 隐藏页保留 composition，滚动位置与输入内容都不丢。
- */
+/** 隐藏页面不参与布局和手势；保留组合状态及滚动位置。 */
 @Composable
 private fun PageSlot(visible: Boolean, content: @Composable () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(if (visible) 1f else 0f)
-            // 底色必须铺在这里，不能只靠各页根 Column 自己撑开。
-            //
-            // 真机反馈：切到「策略」页时，页面上只多出几个字，底下的「锁核」页
-            // 内容整片透出来。原因是 PageSlot 的 Box 是透明的，
-            // 一旦某一页内容不足一屏（根 Column 只有 fillMaxWidth，竖向随内容收缩），
-            // 短出来的那块就直接露出下面 zIndex 更低的页。
-            // 按钮「点不着」也是同一个根因：Column 只有内容那么高，
-            // 下方区域根本不属于这页，点击自然落到别的页上。
-            //
-            // 在 PageSlot 上铺一层纯白底后：
-            //   1) 可见页无论内容多短，都是整屏不透明，不可能透出别的页；
-            //   2) 隐藏页直接在绘制阶段整体跳过，不会反过来盖住可见页。
-            //
-            // 【为什么从 graphicsLayer{alpha} 改成 drawWithContent】
-            //   真机反馈：切到「策略」页时，锁核页的内容仍然透出来，两页文字叠在一起。
-            //   根因是 graphicsLayer 的 alpha 是「整层按 alpha 混合」，它并不能保证
-            //   被完全遮盖 —— 只要下层页有其他绘制时序（例如某个子节点自己提升了图层、
-            //   或底栏 backdrop 触发重组绘制），混合就会露出底下的内容。
-            //   drawWithContent 是硬开关：可见时照常绘制，不可见时【一个像素都不落】，
-            //   不参与任何混合，根本不存在「半透明透出」的可能。
-            //   背景直接画在 drawWithContent 里面，跟内容同生共死：
-            //   可见时先刷一整屏纯白，再画内容；不可见时【连白底都不画】，
-            //   所以隐藏页既不会透出自己，也不会挡住别人。
-            .drawWithContent {
-                if (visible) {
-                    drawRect(Color.White)
-                    drawContent()
-                }
-            }
-    ) {
-        content()
-        // 隐藏页的遮挡层：Compose 的 alpha 不参与命中测试裁剪，
-        // 仅靠 alpha=0 的话，这四个常驻页的 verticalScroll 会一起抢手势，
-        // 表现就是「滑动乱跳、按钮点了没反应」。
-        //
-        // 旧写法 Modifier.pointerInput(Unit) { } 是无效的 —— 它只是注册了一个
-        // 什么都不做的 pointerInput node，事件照样会往下传。
-        //
-        // 这里改成「可见时零成本、隐藏时整块吞掉所有指针事件」的写法。
-        // 只用 foundation 里已在本工程用过的 awaitEachGesture / awaitFirstDown，
-        // 不额外引 awaitPointerEventScope，避免多一套 pointer API 依赖。
-        //
-        // 关键点：不能只 consume 按下那一下。滑动时手指按下后还会持续送来
-        // 移动事件，只吞按下的话，移动事件照样会漏给下面那页的 verticalScroll，
-        // 于是「滑一下跳一下」。所以按下之后要把整段手势的每次变化都吃掉，
-        // 直到手指抬起。
-        if (!visible) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            down.consume()
-                            // 一直吃到这一指抬起为止：waitForUpOrCancellation 会持续
-                            // 消费后续的移动 / 抬起事件，没有中间事件能漏给下层 scroll。
-                            val up = waitForUpOrCancellation()
-                            if (up != null) up.consume()
-                        }
-                    }
-            )
+    val surface = MiuixTheme.colorScheme.surface
+    val alpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(180), label = "pageAlpha"
+    )
+    androidx.compose.ui.layout.Layout(content = {
+        Box(Modifier.fillMaxSize().background(surface)) {
+            Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha }) { content() }
+        }
+    }) { measurables, constraints ->
+        if (visible) {
+            val page = measurables.first().measure(constraints)
+            layout(page.width, page.height) { page.placeRelative(0, 0) }
+        } else {
+            layout(constraints.maxWidth, constraints.maxHeight) {}
         }
     }
 }
@@ -223,6 +161,9 @@ private fun AppRoot() {
     var refreshAgain by remember { mutableStateOf(false) }
     var lastRefreshAt by remember { mutableStateOf(0L) }
     var alive by remember { mutableStateOf(true) }
+    var configRevision by remember { mutableStateOf(0L) }
+    var pendingSaves by remember { mutableStateOf(0) }
+    var freezeProbeRunning by remember { mutableStateOf(false) }
 
     // 底栏 backdrop。
     //
@@ -283,23 +224,24 @@ private fun AppRoot() {
      * 这里是独立的、低频的路径（只在启动与相关页改动后调用）。
      */
     fun probeFreeze() {
-        if (!alive) return
-        RootShell.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { _, out, _ ->
-            // exec 的 stdout 已经回主线程了，但脚本内部 pm 的写入可能还没落完
-            main.postDelayed({
-                val snap = FreezeData.parse(out)
-                if (snap.applied.isNotEmpty() || snap.actual.isNotEmpty()) {
-                    frozenCount = snap.scopedFrozenCount
-                }
-            }, 350L)
+        if (!alive || freezeProbeRunning) return
+        freezeProbeRunning = true
+        RootShell.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { code, out, _ ->
+            freezeProbeRunning = false
+            if (code == 0 && out.contains("[actual]") && out.contains("[groups]")) {
+                frozenCount = FreezeData.parse(out).scopedFrozenCount
+            }
         }
     }
 
     /** 读配置。root 授权弹窗被拒时 loaded 会是 false，需要能重试。 */
     fun loadConfig() {
+        val revision = configRevision
         CoreConfig.load(RootShell) { c, pkgs, _ ->
-            cfg = c
-            packagesRaw = pkgs.orEmpty()
+            if (revision == configRevision && pendingSaves == 0 && c.loaded) {
+                cfg = c
+                packagesRaw = pkgs
+            }
             refresh(false)
             probeFreeze()
         }
@@ -321,6 +263,7 @@ private fun AppRoot() {
                 refresh(false)
             }
         }
+        alive = true
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             alive = false
@@ -343,22 +286,35 @@ private fun AppRoot() {
      * 再延迟一点补一次刷新，让守护进程的新状态尽快反映到界面。
      */
     fun save(newCfg: CoreConfig, packages: String?, done: ((Boolean, String) -> Unit)?) {
+        configRevision += 1
+        pendingSaves += 1
+        val previousCfg = cfg
+        val intended = newCfg.copy(loaded = true)
+        cfg = intended
         val cmd = CoreConfig.buildSaveCmd(newCfg, packages)
-        RootShell.exec(cmd) { code, _, err ->
-            val ok = code == 0
+        RootShell.exec(cmd) { code, out, err ->
+            pendingSaves -= 1
+            val ok = code == 0 && out.lineSequence().any { it.trim() == "OK" }
             if (ok) {
-                cfg = newCfg.copy(loaded = true)
+                if (cfg == intended) cfg = intended
                 if (packages != null) packagesRaw = packages
                 main.postDelayed({ refresh(false) }, 400L)
                 // 配置可能正好改了冻结分组，摘要要跟着变，否则策略页还停在旧数字上
                 main.postDelayed({ probeFreeze() }, 900L)
             }
+            if (!ok && cfg == intended) cfg = previousCfg
             done?.invoke(
                 ok,
                 if (ok) "OK" else err.takeIf { it.isNotEmpty() } ?: "退出码 $code"
             )
         }
     }
+
+    fun closeSubPage() {
+        subPage = SubPage.NONE
+        loadConfig()
+    }
+    BackHandler(enabled = subPage != SubPage.NONE) { closeSubPage() }
 
     // 根布局：Scaffold(bottomBar = …)，与 KernelSU 官方 ui/MainActivity.kt 的
     // `Scaffold(bottomBar = bottomBar) { pagerContent(innerPadding.calculateBottomPadding()) }`
@@ -458,7 +414,7 @@ private fun AppRoot() {
                     )
                 }
                 PageSlot(visible = currentTab == 2) {
-                    FreqPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
+                    FreqPage(cfg, snapshot, packagesRaw, RootShell, { refresh(false) }, ::save)
                 }
                 PageSlot(visible = currentTab == 3) {
                     SettingsPage(cfg, snapshot, packagesRaw, RootShell, { refresh(true) }, ::save)
@@ -474,7 +430,13 @@ private fun AppRoot() {
                 // 为什么挂 statusBarsPadding：
                 //   二级页是独立全屏层，不经过外层那个挂了 statusBarsPadding 的 Box，
                 //   不自己补一下标题就会顶进状态栏。
-                if (subPage != SubPage.NONE) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = subPage != SubPage.NONE,
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) +
+                        androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(240)) { it / 8 },
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140)),
+                    modifier = Modifier.zIndex(2f)
+                ) {
                     // 二级页必须是「完完全全的第二屏」。
                     //
                     // 用户反馈：「打开的第二页跟第一页重叠，是能互相看见的，不好看」。
@@ -491,30 +453,19 @@ private fun AppRoot() {
                             .fillMaxSize()
                             .zIndex(2f)
                             .background(MiuixTheme.colorScheme.surface)
-                            // 整块吞掉指针：二级页开着时，下层任何东西都不该被点到。
-                            //
-                            // 用 awaitEachGesture 一路吃到手指抬起，理由同 PageSlot：
-                            // 只 consume 按下的话，后续移动事件还会漏给下层 scroll，
-                            // 表现成「在二级页上滑动，下面的列表跟着动」。
-                            .pointerInput(Unit) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    down.consume()
-                                    val up = waitForUpOrCancellation()
-                                    if (up != null) up.consume()
-                                }
-                            }
-                            .statusBarsPadding()
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null
+                            ) {}
                     ) {
                         when (subPage) {
                             SubPage.FREEZE -> FreezePage(
                                 cfg = cfg,
                                 sh = RootShell,
-                                onBack = { subPage = SubPage.NONE },
+                                onBack = { closeSubPage() },
                                 onChanged = {
                                     // 冻结页每次增删都要把数字同步回策略页，
                                     // 否则用户返回后摘要还停在进来之前的旧值
-                                    refresh(true)
                                     probeFreeze()
                                 }
                             )
@@ -523,7 +474,7 @@ private fun AppRoot() {
                             // 但开关一变就要让策略页摘要跟着刷新，故接 onChanged。
                             SubPage.SPOOF -> SpoofPage(
                                 sh = RootShell,
-                                onBack = { subPage = SubPage.NONE },
+                                onBack = { closeSubPage() },
                                 onChanged = { refresh(true) }
                             )
                         }

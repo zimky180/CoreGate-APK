@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.PageHeading
+import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.Gap
 import com.zimky.coregateUS.ui.HGap
@@ -110,22 +112,62 @@ fun PolicyPage(
             // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
-            // 白底：不依赖主题色，保证四页观感一致
-            .background(Color.White)
+            .background(cs.surface)
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+
+        PageHeading("策略", "按使用场景自动调整核心")
+
+        // ── 卡片四：当前场景判断 ─────────────────────────────────────
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                Text(text = "当前场景判断", color = cs.onSurface, fontSize = 16.sp)
+                Gap(12.dp)
+
+                if (s == null) {
+                    StateBadge("读取中", cs.onSurfaceVariantSummary)
+                    Gap(10.dp)
+                    SubText("正在读取当前场景。")
+                } else if (!daemonAlive) {
+                    StateBadge("未运行", cs.error)
+                    Gap(10.dp)
+                    SubText("守护进程未运行，场景判断暂停。")
+                } else if (allOnline) {
+                    StateBadge("已放开", Semantic.ACC)
+                    Gap(10.dp)
+                    SubText(
+                        if (pkg != null) {
+                            "前台应用 $pkg 命中游戏或录屏/相机名单，全部核心已恢复。"
+                        } else {
+                            "全部核心在线：可能命中了游戏/录屏名单，或锁核总开关被关闭。"
+                        }
+                    )
+                } else {
+                    BreathingBadge("锁核中", cs.primary)
+                    Gap(10.dp)
+                    SubText(
+                        if (pkg != null) {
+                            "前台应用 $pkg 未命中游戏/录屏名单。"
+                        } else {
+                            "当前前台应用无法读取（ColorOS 限制），按非游戏处理。"
+                        }
+                    )
+                    Gap(10.dp)
+                    SubText("已封锁 $lockedCount 个核心以节省功耗。")
+                }
+            }
+        }
+
+        SectionHeading("自动恢复", "满足已开启的条件时恢复全部核心")
 
         // ── 卡片一：录屏 / 相机自动恢复 ──────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "录屏 / 相机自动恢复", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 SwitchRow(
                     title = "录屏或拍照时恢复全部核心",
-                    desc = "开启后，检测到录屏或相机正在使用时自动解锁所有核心，避免录制卡顿、拍照掉帧。",
+                    desc = "检测到名单内的录屏或相机应用时恢复全部核心。",
                     trailing = {
                         Switch(
                             checked = cfg.captureBoost,
@@ -139,20 +181,13 @@ fun PolicyPage(
                     }
                 )
 
-                Gap(10.dp)
-                HintText("检测名单内置了常见录屏与相机包名（含 ColorOS / OxygenOS）。关闭此项后，模块只认 packages.txt 里的游戏列表。")
-            }
-        }
-
-        // ── 卡片二：充电策略 ─────────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "充电策略", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
+                Gap(16.dp)
+                HairLine()
+                Gap(16.dp)
 
                 SwitchRow(
                     title = "充电时不锁核",
-                    desc = "插上充电器时保持全部核心在线。充电时发热本就明显，锁核收益有限，而放开核心能让充电管理和后台任务更快完成。",
+                    desc = "充电期间保持全部核心在线，拔下后恢复日常策略。",
                     trailing = {
                         Switch(
                             checked = cfg.noLockCharging,
@@ -171,12 +206,14 @@ fun PolicyPage(
             }
         }
 
+        SectionHeading("检测节奏")
+
         // ── 卡片三：轮询间隔 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 Text(text = "轮询间隔", color = cs.onSurface, fontSize = 16.sp)
                 Gap(10.dp)
-                SubText("守护进程每隔多少秒检查一次前台应用。间隔越短响应越快，但唤醒次数越多，待机功耗也略高；间隔越长越省电，但进出游戏的反应会变慢。")
+                SubText("间隔越短，场景切换响应越快，唤醒次数也越多。")
                 Gap(12.dp)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -225,47 +262,11 @@ fun PolicyPage(
             }
         }
 
-        // ── 卡片四：当前场景判断 ─────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "当前场景判断", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-
-                if (!daemonAlive) {
-                    StateBadge("未运行", cs.error)
-                    Gap(10.dp)
-                    SubText("守护进程未运行，场景判断暂停。")
-                } else if (allOnline) {
-                    StateBadge("已放开", Semantic.ACC)
-                    Gap(10.dp)
-                    SubText(
-                        if (pkg != null) {
-                            "前台应用 $pkg 命中游戏或录屏/相机名单，全部核心已恢复。"
-                        } else {
-                            "全部核心在线：可能命中了游戏/录屏名单，或锁核总开关被关闭。"
-                        }
-                    )
-                } else {
-                    BreathingBadge("锁核中", cs.primary)
-                    Gap(10.dp)
-                    SubText(
-                        if (pkg != null) {
-                            "前台应用 $pkg 未命中游戏/录屏名单。"
-                        } else {
-                            "当前前台应用无法读取（ColorOS 限制），按非游戏处理。"
-                        }
-                    )
-                    Gap(10.dp)
-                    SubText("已封锁 $lockedCount 个核心以节省功耗。")
-                }
-            }
-        }
+        SectionHeading("更多策略")
 
         // ── 卡片五：更多策略（点进各自的二级页）───────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "更多策略", color = cs.onSurface, fontSize = 16.sp)
-                Gap(4.dp)
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
 
                 NavRow(
                     title = "冻结管理",
@@ -274,8 +275,8 @@ fun PolicyPage(
                 )
                 HairLine()
                 NavRow(
-                    title = "老机型模拟",
-                    summary = "让抖音以为这是老手机，开启省电优化",
+                    title = "抖音老机型优化",
+                    summary = "老机型兼容配置与生效说明",
                     onClick = onOpenSpoof
                 )
 

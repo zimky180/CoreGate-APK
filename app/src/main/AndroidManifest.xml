@@ -84,9 +84,22 @@
         <package android:name="com.android.devicelockcontroller" />
         <package android:name="com.coloros.codebook" />
         <package android:name="com.coloros.colordirectservice" />
+        <package android:name="com.oplus.aiunit" />
+        <package android:name="com.oplus.metis" />
+        <package android:name="com.oplus.obrain" />
+        <package android:name="com.oplus.ovoicemanager" />
+        <package android:name="com.oplus.ovoicemanager.wakeup" />
+        <package android:name="com.oplus.games" />
+        <package android:name="com.oplus.cosa" />
+        <package android:name="com.oplus.themestore" />
+        <package android:name="com.heytap.themestore" />
+        <package android:name="com.heytap.quicksearchbox" />
+        <package android:name="com.coloros.assistantscreen" />
+        <package android:name="com.coloros.ocs.opencapabilityservice" />
     </queries>
 
     <application
+        android:name=".CoreGateApp"
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"

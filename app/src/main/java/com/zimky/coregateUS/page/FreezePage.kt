@@ -1,6 +1,8 @@
 package com.zimky.coregateUS.page
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,127 +92,106 @@ fun FreezePage(
     val cs = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    // 一次性解析 63 个包的中文名，只在进页时算一次。
-    // 用 applicationContext 减少 Activity 引用被闭包持有的风险。
-    val labels by remember {
-        mutableStateOf(
-            runCatching { AppLabels.resolve(ctx.applicationContext, AppLabels.allFreezePkgs()) }
-                .getOrDefault(emptyMap())
-        )
-    }
+    var labels by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var snap by remember { mutableStateOf(FreezeData.Snapshot()) }
     var loading by remember { mutableStateOf(true) }
-    // 【单包开关的本地覆盖层】(v2.2.2)
-    //
-    // 旧实现只有一个 busyPkg，点击后：
-    //   busyPkg = pkg → sh.exec(su …) → 回调 → reload(--freeze-status) → 界面才变
-    // 这条链路在 ColorOS 上要 300~900ms（su 冷启动 + pm list -d + dumpsys package 全量解析），
-    // 期间开关纹丝不动；而 busyPkg 期间的重复点击又被 `return` 直接吞掉，
-    // 于是表现就是「点不动」「点了没反应」「反复点还是不动」。
-    //
-    // 现在改成本地乐观覆盖：
-    //   pending：用户刚点、引擎还没答复 → 开关立刻按用户意图显示，并转圈
-    //   failed ：引擎明确失败 → 强制回到「与用户意图相反」的状态，并标红
-    // 真实状态仍旧来自 snapshot.actual，pending 只做短期覆盖，回读后被清掉，
-    // 所以「以系统真实状态为准」这个原则没有被破坏。
     var pending by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
-    var failed by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
-    // 正在处理中的包（只用于禁用开关，不再吞点击 —— 见 applyPkg 注释）
-    var busyPkg by remember { mutableStateOf<String?>(null) }
-    // 本地覆盖表：包名 → 期望的开关值。合并函数每次重建，避免残留脏键。
-    fun overlay(base: Map<String, String>): Map<String, String> {
-        if (pending.isEmpty() && failed.isEmpty()) return base
-        val m = LinkedHashMap(base)
-        pending.forEach { (k, want) ->
-            if (want) m[k] = "disable" else m.remove(k)
-        }
-        failed.forEach { (k, wasFrozen) ->
-            if (wasFrozen) m[k] = "disable" else m.remove(k)
-        }
-        return m
-    }
-
-    // 待确认的高风险组（非空时弹出确认框）
+    var groupPending by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var pendingRiskyKey by remember { mutableStateOf<String?>(null) }
+    val running = remember { mutableSetOf<String>() }
+    val confirmed = remember { mutableMapOf<String, Boolean>() }
+    var reloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var reading by remember { mutableStateOf(false) }
+    var readAgain by remember { mutableStateOf(false) }
+    val readCallbacks = remember { mutableListOf<() -> Unit>() }
 
-    // 读取真实冻结状态。这个函数会被多处调用（进页、操作后、手动刷新）。
-    //
-    // 【为什么改成回调驱动】(v2.2.1)
-    //   旧实现是 exec 回调里给 out 赋值，然后 delay(350) 后直接读 out。
-    //   RootShell.exec 是异步回调，su + pm list + dumpsys 在 ColorOS 16 上
-    //   经常要 300~900ms，350ms 时回调多半还没到 —— 读到的是空串，
-    //   于是 snap 被解析成「全部未冻结」，界面看上去就是「点了没反应」。
-    //   现在改成：回调里解析 + 更新状态，不再靠 sleep 猜时间。
-    //
-    // 【silent 参数】(v2.2.2)
-    //   单包动作做完后要回读真实状态，但不该把整页切回「正在读取真实冻结状态…」，
-    //   也不该让所有卡片一起重绘闪烁。silent=true 时不动 loading。
+    fun overlay(base: Map<String, String>): Map<String, String> = base.toMutableMap().apply {
+        confirmed.forEach { (pkg, want) -> if (want) put(pkg, "disabled") else remove(pkg) }
+        pending.forEach { (pkg, want) -> if (want) put(pkg, "disabled") else remove(pkg) }
+    }
+
     fun reload(silent: Boolean = false, onDone: (() -> Unit)? = null) {
-        scope.launch {
-            if (!silent) loading = true
-            sh.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { _, o, _ ->
-                scope.launch {
-                    snap = FreezeData.parse(o)
-                    if (!silent) loading = false
-                    onDone?.invoke()
+        if (reading) {
+            readAgain = true
+            if (onDone != null) readCallbacks.add(onDone)
+            return
+        }
+        reading = true
+        if (!silent) loading = true
+        val readConfirmed = confirmed.toMap()
+        sh.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { code, out, _ ->
+            if (code == 0 && out.contains("[actual]") && out.contains("[groups]")) {
+                snap = FreezeData.parse(out)
+                readConfirmed.forEach { (pkg, want) ->
+                    if (confirmed[pkg] == want) confirmed.remove(pkg)
                 }
+            } else {
+                Toaster.show("读取失败，已保留上次状态", true)
+            }
+            loading = false
+            reading = false
+            onDone?.invoke()
+            if (readAgain) {
+                readAgain = false
+                val callbacks = readCallbacks.toList()
+                readCallbacks.clear()
+                reload(silent = true) { callbacks.forEach { it() } }
             }
         }
     }
 
-    LaunchedEffect(Unit) { reload() }
+    fun scheduleRead() {
+        reloadJob?.cancel()
+        reloadJob = scope.launch {
+            delay(180)
+            reload(silent = true) { onChanged() }
+        }
+    }
 
-    // 单包冻结 / 解冻：直接调引擎的 --freeze-add / --freeze-del，不靠改 config
-    // 因为单包选择不等于整组开关，两者语义必须分开。
-    //
-    // 【为什么不再弹「已请求冻结」】(v2.2.1)
-    //   旧版是先弹 Toaster 再 reload，无论引擎成功还是失败都提示「已请求冻结」，
-    //   用户看到提示却看不到开关变化，就成了「按钮点不动」的错觉。
-    //
-    // 【手感：乐观更新 + 只回读不闪】(v2.2.2)
-    //   1. 点击瞬间就把 pending[pkg] 写上，开关当帧翻到位（带动画）。
-    //   2. 不再用 busyPkg 吞掉后续点击：改意图时只记下最后一次意图，
-    //      并且始终以最新意图发命令；同一包的重复点击不会再「石沉大海」。
-    //   3. 引擎回来后才判断成败，失败则翻回原位并标红一下，成功则清 pending。
-    fun applyPkg(pkg: String, freeze: Boolean) {
-        // 先落本地意图，界面立刻响应 —— 这是「点得动」的关键
-        pending = pending + (pkg to freeze)
-        failed = failed - pkg
-        busyPkg = pkg
-        scope.launch {
-            val arg = if (freeze) "--freeze-add" else "--freeze-del"
-            sh.exec("sh /data/adb/modules/CoreGate/service.sh $arg $pkg") { _, o, _ ->
-                scope.launch {
-                    // 精确匹配本次动作对应的成功标记，别用模糊的 "_OK"：
-                    // stdout 里可能同时混入别的行（引擎诊断信息、别的包的残留输出），
-                    // 一旦误判成成功，界面又会回到「提示成功、开关没变」的老毛病。
-                    val okMark = if (freeze) "FREEZE_ADD_OK" else "FREEZE_DEL_OK"
-                    val ok = o.contains(okMark)
-                    if (busyPkg == pkg) busyPkg = null
-                    if (ok) {
-                        // 成功：本地覆盖可以撤了，交给 snapshot.actual 兜底
-                        pending = pending - pkg
-                        failed = failed - pkg
-                        Toaster.show(if (freeze) "已冻结 $pkg" else "已解冻 $pkg")
-                    } else {
-                        // 失败：立刻翻回用户意图的反面，并保留到下次回读，
-                        // 否则会出现「提示失败，开关却停在成功位置」的矛盾
-                        pending = pending - pkg
-                        failed = failed + (pkg to !freeze)
-                        Toaster.show(
-                            if (freeze) "冻结失败：$pkg" else "解冻失败：$pkg",
-                            true
-                        )
-                    }
-                    // 静默回读真实状态：不切 loading、不清其它包的 pending，
-                    // 避免一次点击让整页所有卡片重绘闪烁
-                    reload(silent = true) {
-                        pending = pending - pkg
-                        onChanged()
-                    }
-                }
+    fun sendPkg(pkg: String) {
+        if (pkg in running) return
+        val want = pending[pkg] ?: return
+        running.add(pkg)
+        val arg = if (want) "--freeze-add" else "--freeze-del"
+        sh.exec("sh /data/adb/modules/CoreGate/service.sh $arg $pkg") { code, out, _ ->
+            running.remove(pkg)
+            val mark = if (want) "FREEZE_ADD_OK: $pkg" else "FREEZE_DEL_OK: $pkg"
+            val ok = code == 0 && out.lineSequence().any { it.trim() == mark }
+            if (ok) confirmed[pkg] = want
+            if (pending[pkg] != want) {
+                sendPkg(pkg)
+            } else {
+                pending = pending - pkg
+                if (!ok) Toaster.show("操作未完成：$pkg，请查看实际状态", true)
+                scheduleRead()
             }
         }
+    }
+
+    fun applyPkg(pkg: String, want: Boolean) {
+        pending = pending + (pkg to want)
+        sendPkg(pkg)
+    }
+
+    fun applyGroup(key: String, want: Boolean) {
+        if (groupPending.isNotEmpty() || pending.isNotEmpty()) return
+        groupPending = groupPending + (key to want)
+        sh.exec("sh /data/adb/modules/CoreGate/service.sh --set-freeze $key $want") { code, out, _ ->
+            if (code != 0 || !out.contains("SET_FREEZE_OK:")) {
+                Toaster.show("部分组件未完成，请查看明细", true)
+            }
+            reload(silent = true) {
+                groupPending = groupPending - key
+                onChanged()
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        labels = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            AppLabels.resolve(ctx.applicationContext, AppLabels.allFreezePkgs())
+        }
+        reload()
     }
 
     Column(
@@ -289,7 +270,8 @@ fun FreezePage(
                 actual = overlay(snap.actual),
                 pending = pending,
                 labels = labels,
-                enabled = cfg.let { c ->
+                groupBusy = groupPending.isNotEmpty() || pending.isNotEmpty(),
+                enabled = groupPending[g.key] ?: cfg.let { c ->
                     // 组开关值优先取引擎回显的真实值；引擎没回显时退回本地配置
                     snap.groups[g.key] ?: c.let {
                         when (g.key) {
@@ -299,7 +281,7 @@ fun FreezePage(
                             "diag" -> it.freezeGrpDiag
                             "ad" -> it.freezeGrpAd
                             "self" -> it.freezeGrpSelf
-                            else -> false
+                            else -> c.rawExtra?.get("freeze_grp_${g.key}") == true
                         }
                     }
                 },
@@ -308,15 +290,12 @@ fun FreezePage(
                     if (wantOn && g.risky) {
                         pendingRiskyKey = g.key
                     } else {
-                        // 等 --set-freeze 真正返回再回读，不靠 delay 猜时间
-                        sh.exec(
-                            "sh /data/adb/modules/CoreGate/service.sh --set-freeze ${g.key} ${if (wantOn) "true" else "false"}"
-                        ) { _, _, _ ->
-                            scope.launch { reload { onChanged() } }
-                        }
+                        applyGroup(g.key, wantOn)
                     }
                 },
-                onTogglePkg = { pkg, freeze -> applyPkg(pkg, freeze) }
+                onTogglePkg = { pkg, freeze ->
+                    if (groupPending.isEmpty()) applyPkg(pkg, freeze)
+                }
             )
         }
 
@@ -331,11 +310,7 @@ fun FreezePage(
             onCancel = { pendingRiskyKey = null },
             onConfirm = {
                 pendingRiskyKey = null
-                sh.exec(
-                    "sh /data/adb/modules/CoreGate/service.sh --set-freeze $key true"
-                ) { _, _, _ ->
-                    scope.launch { reload { onChanged() } }
-                }
+                applyGroup(key, true)
             }
         )
     }
@@ -377,7 +352,7 @@ private fun RiskyConfirmDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "此栏仅在 16.0.1 版本实验通过。冻结作用在应用上，不涉及系统服务，" +
-                        "解除冻结只需回到本页关闭该分组，或直接重启设备。",
+                        "解除冻结请回到本页关闭该分组；重启不会自动清除已保存的停用状态。",
                     color = cs.onSurfaceVariantSummary,
                     fontSize = 12.5.sp,
                     lineHeight = 19.sp
@@ -426,6 +401,7 @@ private fun FreezeGroupCard(
     pending: Map<String, Boolean>,
     labels: Map<String, String>,
     enabled: Boolean,
+    groupBusy: Boolean,
     onToggleGroup: (Boolean) -> Unit,
     onTogglePkg: (String, Boolean) -> Unit
 ) {
@@ -440,10 +416,10 @@ private fun FreezeGroupCard(
             .flatMap { it.pkgs }.toSet()
         group.pkgs.filter { it in others }
     }
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by androidx.compose.runtime.saveable.rememberSaveable(group.key) { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Column(modifier = Modifier.animateContentSize().padding(horizontal = 16.dp, vertical = 14.dp)) {
             // 组标题行：名称 + 冻结计数 + 开关
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -479,7 +455,7 @@ private fun FreezeGroupCard(
                         )
                     }
                 }
-                SwitchCompact(checked = enabled, onCheckedChange = onToggleGroup)
+                SwitchCompact(checked = enabled, busy = groupBusy, enabled = !groupBusy, onCheckedChange = onToggleGroup)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -599,6 +575,7 @@ private fun FreezeGroupCard(
 private fun SwitchCompact(
     checked: Boolean,
     busy: Boolean = false,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     val cs = MiuixTheme.colorScheme
@@ -638,20 +615,14 @@ private fun SwitchCompact(
     // busy 时滑块的呼吸透明度：0.45 ↔ 1.0 无限循环，
     // 让用户看出「正在等引擎确认」，而不是误以为又点不动了。
     //
-    // 注意：rememberInfiniteTransition 必须无条件调用（Compose 的可组合函数
-    // 不能放在 if 分支里，否则 busy 切换时槽位数量变化会直接崩），
-    // 因此在外面常驻创建，只在 busy 时才读取它的值。
-    val busyTransition = rememberInfiniteTransition(label = "busy")
-    val busyPulse = busyTransition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 520),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "busyAlpha"
-    )
-    val busyAlpha = if (busy) busyPulse.value else 1f
+    val busyAlpha = if (busy) {
+        val transition = rememberInfiniteTransition(label = "busy")
+        val pulse by transition.animateFloat(
+            initialValue = 0.45f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(520), RepeatMode.Reverse), label = "busyAlpha"
+        )
+        pulse
+    } else 1f
 
     // 轨道内宽 = 38dp，滑块 18dp，两侧各留 2dp → 可移动距离 38-18-4 = 16dp
     // busy 时滑块收窄到 14dp，可移动距离要相应加宽 4dp，否则滑块会缩在左半边不靠右
@@ -661,34 +632,19 @@ private fun SwitchCompact(
 
     Box(
         modifier = Modifier
-            .size(width = 38.dp, height = 22.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                this.alpha = alpha
-            }
+            .size(width = 48.dp, height = 40.dp)
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = androidx.compose.ui.semantics.Role.Switch,
+                interactionSource = press,
+                indication = null,
+                onValueChange = onCheckedChange
+            )
+            .padding(horizontal = 5.dp, vertical = 9.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = alpha }
             .clip(RoundedCornerShape(11.dp))
-            .background(trackColor)
-            // 用 detectTapGestures 而不是 clickable：响应更快、不吃掉按下反馈，
-            // 也不会因为父层垂直滚动而把点击判成滑动后丢掉。
-            // onPress 里必须 try/finally 成对发出 Press / Release（或 Cancel），
-            // 否则按下后动画会永远停在 0.94 的缩放态。
-            .pointerInput(checked, busy) {
-                detectTapGestures(
-                    onPress = {
-                        val p = PressInteraction.Press(it)
-                        press.emit(p)
-                        try {
-                            tryAwaitRelease()
-                            press.emit(PressInteraction.Release(p))
-                        } catch (e: CancellationException) {
-                            press.emit(PressInteraction.Cancel(p))
-                            throw e
-                        }
-                    },
-                    onTap = { if (!busy) onCheckedChange(!checked) }
-                )
-            },
+            .background(trackColor),
         contentAlignment = Alignment.CenterStart
     ) {
         Box(

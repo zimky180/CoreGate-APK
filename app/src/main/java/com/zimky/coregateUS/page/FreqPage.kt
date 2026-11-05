@@ -47,6 +47,8 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.FreqCap
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.PageHeading
+import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.CardDivider
 import com.zimky.coregateUS.ui.Gap
@@ -122,16 +124,15 @@ fun FreqPage(
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+
+        PageHeading("日常限频", "调整目标档位，查看实际状态")
 
         // ── 卡片一：限频开关 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "日常限频", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 SwitchRow(
                     title = "限制 CPU / GPU 上限频率",
                     desc = if (limitOn) {
@@ -159,81 +160,16 @@ fun FreqPage(
 
                 CardDivider()
                 HintText(
-                    "关闭后会优先按开启前的快照恢复各簇上限；没有快照时回退到硬件真实最大合法档。" +
-                        "系统重启会整体还原，不写任何系统分区。"
+                    "关闭后恢复开启前的频率上限；没有快照时恢复到设备支持的最高档。"
                 )
             }
         }
 
-        // ── 卡片二：限频实况 ─────────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "限频实况", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-
-                val allOk = items.all { it.state == FreqCap.STATE_OK }
-                val anyOver = items.any { it.state == FreqCap.STATE_OVER }
-
-                when {
-                    !limitOn -> {
-                        StateBadge("未开启", Semantic.OFF)
-                        Gap(10.dp)
-                        SubText("限频关闭，CPU / GPU 按系统默认策略运行。")
-                    }
-                    allOk -> {
-                        StateBadge("已生效", Semantic.OK)
-                        Gap(10.dp)
-                        SubText("四项全部落在目标档位。")
-                    }
-                    anyOver -> {
-                        StateBadge("未完全生效", Semantic.ERR)
-                        Gap(10.dp)
-                        SubText(
-                            "有项目仍未压到目标值，可能刚改动、还没到下一轮循环，" +
-                                "或被其他模块 / 系统策略改写。"
-                        )
-                    }
-                    else -> {
-                        BreathingBadge("部分生效", Semantic.WARN)
-                        Gap(10.dp)
-                        SubText("部分项目读不到实测值，稍等片刻再看。")
-                    }
-                }
-
-                CardDivider()
-
-                items.forEach { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        LabelText(item.name)
-                        SubText(item.actual, modifier = Modifier.padding(start = 8.dp))
-                        // 尾部标签靠右
-                        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
-                            StateBadge(
-                                FreqCap.stateText(item.state),
-                                Color(FreqCap.stateColor(item.state))
-                            )
-                        }
-                    }
-                }
-
-                Gap(6.dp)
-                HintText("实测值来自 scaling_max_freq / max_gpuclk / max_pwrlevel，随系统刷新。")
-            }
-        }
+        SectionHeading("目标档位", "松手保存，等待模块应用")
 
         // ── 卡片三：限频目标档位（可自定义） ─────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "限频目标档位", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-                SubText("拖动滑杆设定上限，松手即写入 config.json，模块下一轮循环生效。")
-                CardDivider()
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
 
                 val littleAvail = s?.littleAvail ?: emptyList()
                 val bigAvail = s?.bigAvail ?: emptyList()
@@ -340,14 +276,79 @@ fun FreqPage(
 
                 Gap(10.dp)
                 HintText(
-                    if (littleAvail.isEmpty()) {
-                        "未读到内核档位表，滑杆按 100 MHz 步进近似取值；" +
-                            "写入后内核会自动落到最近的真实档位。"
+                    if (littleAvail.isEmpty() || bigAvail.isEmpty() || gpuAvail.isEmpty()) {
+                        "部分档位表未读到，对应滑杆使用备用档位；请以生效检查中的实际值为准。"
                     } else {
-                        "滑杆只吸附内核实测的 scaling_available_frequencies，" +
-                            "避免写进非法档位被内核回弹。"
-                    } + "写入时 GPU 频率额外 +800000 做对齐，" +
-                        "因此实测值可能是 500000000 这种整数。"
+                        "滑杆使用设备支持的实际档位，保存的目标会同步到首页。"
+                    }
+                )
+            }
+        }
+
+        SectionHeading("生效检查", "对照目标与设备实际上限")
+
+        // ── 卡片二：限频实况 ─────────────────────────────────────────
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+
+                val allOk = items.all { it.state == FreqCap.STATE_OK }
+                val anyOver = items.any { it.state == FreqCap.STATE_OVER }
+
+                when {
+                    !limitOn -> {
+                        StateBadge("未开启", Semantic.OFF)
+                        Gap(10.dp)
+                        SubText("限频关闭，CPU / GPU 按系统默认策略运行。")
+                    }
+                    allOk -> {
+                        StateBadge("已生效", Semantic.OK)
+                        Gap(10.dp)
+                        SubText("四项全部落在目标档位。")
+                    }
+                    anyOver -> {
+                        StateBadge("未完全生效", Semantic.ERR)
+                        Gap(10.dp)
+                        SubText(
+                            "有项目仍未压到目标值，可能刚改动、还没到下一轮循环，" +
+                                "或被其他模块 / 系统策略改写。"
+                        )
+                    }
+                    else -> {
+                        BreathingBadge("部分生效", Semantic.WARN)
+                        Gap(10.dp)
+                        SubText("部分项目读不到实测值，稍等片刻再看。")
+                    }
+                }
+
+                CardDivider()
+
+                items.forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            LabelText(item.name)
+                            HintText("目标 ${item.target}")
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            SubText(item.actual)
+                            Gap(4.dp)
+                            StateBadge(
+                                FreqCap.stateText(item.state),
+                                Color(FreqCap.stateColor(item.state))
+                            )
+                        }
+                    }
+                }
+
+                Gap(6.dp)
+                HintText("以上为实际上限，目标值来自当前配置；保存后等待模块下一轮应用。")
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    text = "刷新限频实况", onClick = onRefresh
                 )
             }
         }
@@ -431,7 +432,8 @@ private fun FreqSliderRow(
         }
         best
     }
-    var idx by remember(targetIdx) { mutableIntStateOf(targetIdx) }
+    val indexState = remember(steps, currentMhz) { mutableIntStateOf(targetIdx) }
+    var idx by indexState
     val shownMhz = steps.getOrElse(idx) { fallbackMhz }
 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -453,12 +455,12 @@ private fun FreqSliderRow(
             index = idx,
             maxIndex = steps.size - 1,
             onIndexChange = { idx = it },
-            onCommit = { onCommit(steps.getOrElse(idx) { fallbackMhz }) }
+            onCommit = { onCommit(steps.getOrElse(indexState.intValue) { fallbackMhz }) }
         )
         Gap(2.dp)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             HintText("${steps.firstOrNull() ?: fallbackMhz}")
-            HintText(if (hasTable) "${steps.size} 档" else "100 MHz 步进")
+            HintText(if (hasTable) "${steps.size} 档" else "备用档位")
             HintText("${steps.lastOrNull() ?: fallbackMhz}")
         }
     }
@@ -492,12 +494,14 @@ private fun MiuixSlider(
     // 快速拖动时 pick 的「没变化就不回调」判断就会失准、漏掉末段位移。
     // 用 rememberUpdatedState 保证回调里始终读到最新 index。
     val latestIndex by rememberUpdatedState(index)
+    val latestChange by rememberUpdatedState(onIndexChange)
+    val latestCommit by rememberUpdatedState(onCommit)
 
     fun pick(x: Float) {
         if (maxIndex <= 0 || widthPx <= 0) return
         val f = (x / widthPx).coerceIn(0f, 1f)
         val i = Math.round(f * maxIndex)
-        if (i != latestIndex) onIndexChange(i)
+        if (i != latestIndex) latestChange(i)
     }
 
     Box(
@@ -506,12 +510,15 @@ private fun MiuixSlider(
             .height(28.dp)
             .onSizeChanged { widthPx = it.width }
             .pointerInput(maxIndex, widthPx) {
-                detectTapGestures { offset -> pick(offset.x) }
+                detectTapGestures { offset ->
+                    pick(offset.x)
+                    latestCommit()
+                }
             }
-            .pointerInput(maxIndex, widthPx, index) {
+            .pointerInput(maxIndex, widthPx) {
                 detectHorizontalDragGestures(
-                    onDragEnd = { onCommit() },
-                    onDragCancel = { onCommit() }
+                    onDragEnd = { latestCommit() },
+                    onDragCancel = {}
                 ) { change, _ ->
                     change.consume()
                     pick(change.position.x)
