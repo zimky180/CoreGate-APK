@@ -2,7 +2,7 @@ package com.zimky.coregateUS.page
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.animateContentSize
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
