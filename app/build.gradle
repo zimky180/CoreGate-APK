@@ -16,8 +16,8 @@ android {
         // 不用 tools:overrideLibrary 绕过检查（绕过会失去构建期保护）。
         minSdk 33
         targetSdk 37
-        versionCode 225
-        versionName "2.2.5"
+        versionCode 226
+        versionName "2.2.6"
     }
 
     buildTypes {
@@ -34,19 +34,6 @@ android {
 
     buildFeatures {
         compose true
-    }
-
-    packaging {
-        resources {
-            // libxposed 官方写法：把 resources/META-INF/xposed/* 合并进 APK。
-            // 关键：AGP 的 excludes 优先级高于 merges —— 之前这里漏了一条
-            //       excludes += '**'，把整个 resources 全排掉，导致
-            //       META-INF/xposed/ 三件套（java_init.list / module.prop / scope.list）
-            //       永远进不了 APK，LSPosed 识别不到模块、只能逐个弹「请求 hook」窗口。
-            // 这里只排掉签名/许可这类无用条目，绝不能用 '**'。
-            merges += 'META-INF/xposed/*'
-            excludes += '/META-INF/{AL2.0,LGPL2.1}'
-        }
     }
 }
 
@@ -80,8 +67,4 @@ dependencies {
     implementation libs.miuix.blur
 
     implementation libs.material.kolor
-
-    // Hook API is supplied by the framework; service is the module app communication client.
-    compileOnly libs.libxposed.api
-    implementation libs.libxposed.service
 }

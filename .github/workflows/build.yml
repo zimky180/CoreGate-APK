@@ -73,31 +73,18 @@ jobs:
           echo "gradle rc = $rc"
           if [ "$rc" != "0" ]; then exit 1; fi
 
-      - name: Verify Xposed metadata in APK
-        run: |
-          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          echo "Checking: $APK"
-          LIST=$(unzip -l "$APK" | grep "META-INF/xposed/" || true)
-          echo "$LIST"
-          for f in java_init.list module.prop scope.list; do
-            if ! echo "$LIST" | grep -q "META-INF/xposed/$f"; then
-              echo "::error::APK 缺少 META-INF/xposed/$f —— 检查 app/build.gradle 的 packaging.merges"
-              exit 1
-            fi
-          done
-          echo "xposed metadata OK"
 
       - name: Rename APK
         run: |
           APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           echo "Found APK: $APK"
           mkdir -p out
-          cp "$APK" "out/CoreGate-APK-debug-v2.2.5.apk"
+          cp "$APK" "out/CoreGate-APK-debug-v2.2.6.apk"
           ls -l out
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: CoreGate-APK-debug-v2.2.5
-          path: out/CoreGate-APK-debug-v2.2.5.apk
+          path: out/CoreGate-APK-debug-v2.2.6.apk
           if-no-files-found: error

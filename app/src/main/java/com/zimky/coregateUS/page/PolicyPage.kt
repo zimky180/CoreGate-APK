@@ -82,8 +82,7 @@ fun PolicyPage(
     save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit,
     /** 冻结管理二级页里的「已冻结」数量快照，null 表示还没读到 */
     frozenCount: Int?,
-    onOpenFreeze: () -> Unit,
-    onOpenSpoof: () -> Unit
+    onOpenFreeze: () -> Unit
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
@@ -292,16 +291,10 @@ fun PolicyPage(
                     summary = freezeSummary,
                     onClick = onOpenFreeze
                 )
-                HairLine()
-                NavRow(
-                    title = "抖音老机型优化",
-                    summary = "老机型兼容配置与生效说明",
-                    onClick = onOpenSpoof
-                )
 
 
                 Gap(10.dp)
-                HintText("以上两项都默认关闭，改之前请先看清各自页面的说明。")
+                HintText("以上项默认关闭，改之前请先看清页面的说明。")
             }
         }
 

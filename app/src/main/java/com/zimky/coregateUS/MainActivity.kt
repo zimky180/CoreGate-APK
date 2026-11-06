@@ -76,7 +76,6 @@ import com.zimky.coregateUS.page.FreezePage
 import com.zimky.coregateUS.page.LockPage
 import com.zimky.coregateUS.page.PolicyPage
 import com.zimky.coregateUS.page.SettingsPage
-import com.zimky.coregateUS.page.SpoofPage
 import com.zimky.coregateUS.ui.ToastHost
 import com.zimky.coregateUS.ui.component.RootGate
 import com.zimky.coregateUS.ui.component.FloatingBottomBar
@@ -155,13 +154,12 @@ private const val POLL_MS = 8_000L
 private const val MIN_REFRESH_GAP = 1_200L
 
 /**
- * 二级页的三种形态。用字符串而不是 sealed class，是为了能直接存进 rememberSaveable，
+ * 二级页的形态。用字符串而不是 sealed class，是为了能直接存进 rememberSaveable，
  * 旋转屏幕后仍停在同一页。
  */
 private object SubPage {
     const val NONE = ""
     const val FREEZE = "freeze"
-    const val SPOOF = "spoof"
 }
 
 /** 底栏四栏文案。 */
@@ -464,8 +462,7 @@ private fun AppRoot() {
                         onRefresh = { refresh(true) },
                         save = ::save,
                         frozenCount = frozenCount,
-                        onOpenFreeze = { subPage = SubPage.FREEZE },
-                        onOpenSpoof = { subPage = SubPage.SPOOF }
+                        onOpenFreeze = { subPage = SubPage.FREEZE }
                     )
                 }
                 PageSlot(visible = currentTab == 2) {
@@ -523,14 +520,6 @@ private fun AppRoot() {
                                     // 否则用户返回后摘要还停在进来之前的旧值
                                     loadConfig()
                                 }
-                            )
-                            // 伪造机型页：改动落在 /data/adb/CoreGate/spoof.json，
-                            // 不写任何系统属性，所以不需要 cfg —— 签名里也没有它；
-                            // 但开关一变就要让策略页摘要跟着刷新，故接 onChanged。
-                            SubPage.SPOOF -> SpoofPage(
-                                sh = RootShell,
-                                onBack = { closeSubPage() },
-                                onChanged = { refresh(true) }
                             )
                         }
                     }
