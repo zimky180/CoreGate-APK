@@ -709,10 +709,10 @@ private fun AppearancePills(labels: List<String>, selected: Int, onSelected: (In
     val surface = MiuixTheme.colorScheme.surfaceContainer
     val backdrop = rememberLayerBackdrop { drawRect(surface) }
     Box(Modifier.fillMaxWidth()) {
-        Box(Modifier.matchParentSize().layerBackdrop(backdrop).background(surface))
+        
         FloatingBottomBar(
             modifier = Modifier.fillMaxWidth(), selectedIndex = selected,
-            onSelected = onSelected, backdrop = backdrop, tabsCount = labels.size
+            onSelected = onSelected, backdrop = backdrop, tabsCount = labels.size, compact = true
         ) { activate ->
             labels.forEachIndexed { index, label ->
                 FloatingBottomBarItem(selected = selected == index, onClick = { activate(index) }) {

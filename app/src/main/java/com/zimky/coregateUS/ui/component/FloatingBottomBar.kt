@@ -60,6 +60,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.launch
@@ -210,9 +211,12 @@ fun FloatingBottomBar(
     backdrop: Backdrop,
     tabsCount: Int,
     isBlurEnabled: Boolean = true,
+    compact: Boolean = false,
     content: @Composable RowScope.((Int) -> Unit) -> Unit
 ) {
     val isInDark = isInDarkTheme()
+    val barHeight = if (compact) 44.dp else 64.dp
+    val indicatorHeight = barHeight - 8.dp
     val pillShape = remember { CircleShape }
     val accentColor = MiuixTheme.colorScheme.primary
     val tabContentColor = MiuixTheme.colorScheme.onSurface
@@ -252,14 +256,14 @@ fun FloatingBottomBar(
             .coerceIn(0, tabsCount - 1)
     }
 
-    val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr) {
+    val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr, compact) {
         DampedDragAnimation(
             animationScope = animationScope,
             initialValue = selectedIndex.toFloat(),
             valueRange = 0f..(tabsCount - 1).toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
-            pressedScale = 78f / 56f,
+            pressedScale = if (compact) 1.06f else 1.12f,
             canDrag = { offset ->
                 offset.x in 0f..totalWidthPx
             },
@@ -369,7 +373,7 @@ fun FloatingBottomBar(
                             highlight = { baseHighlight.value.copy(alpha = 0.75f) },
                             layerBlock = {
                                 val width = size.width.coerceAtLeast(1f)
-                                val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
+                                val s = lerp(1f, 1f + 3.dp.toPx() / width, dampedDragAnimation.pressProgress)
                                 scaleX = s
                                 scaleY = s
                             },
@@ -385,7 +389,7 @@ fun FloatingBottomBar(
                     } else Modifier
                 )
                 .then(dampedDragAnimation.modifier)
-                .height(64.dp)
+                .height(barHeight)
                 .padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -397,7 +401,7 @@ fun FloatingBottomBar(
         if (isBlurEnabled) {
             CompositionLocalProvider(
                 LocalFloatingBottomBarTabScale provides {
-                    lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
+                    lerp(1f, 1.05f, dampedDragAnimation.pressProgress)
                 },
                 LocalContentColor provides accentColor,
             ) {
@@ -421,7 +425,7 @@ fun FloatingBottomBar(
                             onDrawSurface = { drawRect(containerColor) },
                         )
                         .then(interactiveHighlight.modifier)
-                        .height(56.dp)
+                        .height(indicatorHeight)
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     content = { content(::activateTab) }
@@ -470,12 +474,12 @@ fun FloatingBottomBar(
                         )
                         .innerShadow(shape = pillShape) {
                             InnerShadow(
-                                radius = 8.dp * dampedDragAnimation.pressProgress,
+                                radius = 3.dp * dampedDragAnimation.pressProgress,
                                 color = Color.Black.copy(alpha = 0.15f),
                                 alpha = dampedDragAnimation.pressProgress,
                             )
                         }
-                        .height(56.dp)
+                        .height(indicatorHeight)
                         .width(tabWidthDp)
                 )
             } else {
@@ -488,7 +492,7 @@ fun FloatingBottomBar(
                         }
                         .clip(pillShape)
                         .background(accentColor.copy(alpha = 0.15f), pillShape)
-                        .height(56.dp)
+                        .height(indicatorHeight)
                         .width(tabWidthDp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
@@ -498,7 +502,7 @@ fun FloatingBottomBar(
                                 .clearAndSetSemantics {}
                                 .wrapContentWidth(align = Alignment.Start, unbounded = true)
                                 .requiredWidth(with(density) { (totalWidthPx - 8.dp.toPx()).toDp() })
-                                .height(56.dp)
+                                .height(indicatorHeight)
                                 .graphicsLayer {
                                     val progressOffset = dampedDragAnimation.value * tabWidthPx
                                     translationX = if (isLtr) -progressOffset else progressOffset

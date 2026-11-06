@@ -111,7 +111,7 @@ internal fun TemperaturePolicyCard(
             HairLine()
             Text("高温时的动作", color = cs.onSurface, fontSize = 14.sp)
             Box(Modifier.fillMaxWidth()) {
-                Box(Modifier.matchParentSize().layerBackdrop(backdrop).background(surface))
+                
                 FloatingBottomBar(
                     modifier = Modifier.fillMaxWidth(),
                     selectedIndex = if (cfg.temperatureMode == "unlock") 1 else 0,
@@ -119,7 +119,7 @@ internal fun TemperaturePolicyCard(
                         val mode = if (index == 1) "unlock" else "lock"
                         if (available && mode != cfg.temperatureMode) persist(cfg.copy(temperatureMode = mode))
                     },
-                    backdrop = backdrop, tabsCount = 2
+                    backdrop = backdrop, tabsCount = 2, compact = true
                 ) { activate ->
                     listOf("高温锁核", "高温解封").forEachIndexed { index, label ->
                         val selected = (cfg.temperatureMode == "unlock") == (index == 1)
@@ -139,10 +139,10 @@ internal fun TemperaturePolicyCard(
                     onValueChange = { thresholdText = it.filter(Char::isDigit).take(3) },
                     label = { Text("触发阈值", fontSize = 12.sp) },
                     singleLine = true, enabled = available,
-                    modifier = Modifier.width(116.dp).onFocusChanged { focused = it.isFocused },
+                    modifier = Modifier.width(96.dp).onFocusChanged { focused = it.isFocused },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { commitThreshold() }),
-                    textStyle = TextStyle(fontSize = 16.sp, color = cs.onSurface),
+                    textStyle = TextStyle(fontSize = 14.sp, color = cs.onSurface),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = cs.primary, unfocusedBorderColor = cs.outline,
                         focusedContainerColor = cs.surfaceContainerHigh,

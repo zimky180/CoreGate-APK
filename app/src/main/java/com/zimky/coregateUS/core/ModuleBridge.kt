@@ -129,6 +129,10 @@ object ModuleBridge {
             return r
         }
 
+        if (out.contains("UNLOCK_ONCE_FAILED")) {
+            return Result(ok = false, online = indexInt(out, "在线="),
+                msg = "部分核心未能恢复，请查看模块日志：" + between(out, "仍离线=[", "]"))
+        }
         if (out.contains("UNLOCK_ONCE_DONE")) {
             r.ok = true
             val on = indexInt(out, "在线=")

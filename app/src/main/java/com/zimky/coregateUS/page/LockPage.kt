@@ -143,6 +143,20 @@ fun LockPage(
 
         PageHeading("核心门控", "运行概览与核心控制")
 
+        val moduleMismatch = s?.svcState == true && s.moduleVersionCode != null &&
+            (s.moduleVersionCode != com.zimky.coregateUS.BuildConfig.VERSION_CODE ||
+                s.moduleVersion != com.zimky.coregateUS.BuildConfig.VERSION_NAME.removePrefix("v"))
+        if (moduleMismatch) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    AnimatedGradientText("请更新配套模块", cs.error)
+                    Gap(6.dp)
+                    Text("APK ${com.zimky.coregateUS.BuildConfig.VERSION_NAME} · 模块 ${s?.moduleVersion}，请刷入与 APK 配套的模块 ZIP 并重启。",
+                        color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
+                }
+            }
+        }
+
         // ── 卡片一：锁核运行状态 ─────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {

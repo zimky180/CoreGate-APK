@@ -4,6 +4,10 @@ import androidx.compose.animation.core.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -24,17 +28,25 @@ fun AnimatedGradientText(
     fontWeight: FontWeight = FontWeight.SemiBold
 ) {
     val transition = rememberInfiniteTransition(label = "textShimmer")
-    val phase by transition.animateFloat(
+    val phase = transition.animateFloat(
         initialValue = -1f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Reverse),
         label = "highlightPosition"
     )
-    val highlight = lerp(color, MiuixTheme.colorScheme.onSurface, 0.32f)
+    val highlight = lerp(color, MiuixTheme.colorScheme.onSurface, 0.65f)
+    val secondary = MiuixTheme.colorScheme.primary
     Text(
-        text = text, modifier = modifier, fontSize = fontSize, fontWeight = fontWeight,
-        style = TextStyle(brush = Brush.linearGradient(
-            colors = listOf(color, highlight, color),
-            start = Offset(phase * 160f, 0f), end = Offset(phase * 160f + 240f, 80f)
-        ))
+        text = text, modifier = modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val width = size.width.coerceAtLeast(1f)
+                val shift = phase.value * width * 0.45f
+                drawRect(Brush.linearGradient(
+                    colors = listOf(color, highlight, secondary, color),
+                    start = Offset(shift, 0f), end = Offset(shift + width, size.height)
+                ), blendMode = BlendMode.SrcIn)
+            },
+        color = color, fontSize = fontSize, fontWeight = fontWeight
     )
 }

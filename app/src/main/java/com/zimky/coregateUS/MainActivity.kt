@@ -7,8 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.view.drawToBitmap
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -55,8 +53,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.draw.clip
+
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -111,9 +111,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             var appearance by remember { mutableStateOf(AppSettings.load(this@MainActivity)) }
-            val rootView = LocalView.current
+            val themeLayer = androidx.compose.ui.graphics.rememberGraphicsLayer()
+            var oldThemeLayer by remember { mutableStateOf<androidx.compose.ui.graphics.layer.GraphicsLayer?>(null) }
+            var themeJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
             val themeScope = rememberCoroutineScope()
-            var oldThemeImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+            
             var fadingTheme by remember { mutableStateOf(false) }
             val themeOverlayAlpha by animateFloatAsState(
                 if (fadingTheme) 0f else 1f, tween(300), label = "themeTransition"
@@ -123,28 +125,35 @@ class MainActivity : ComponentActivity() {
                 LocalAppSettings provides appearance,
                 LocalSetAppSettings provides { next ->
                     if (next != appearance) {
-                        oldThemeImage = runCatching { rootView.drawToBitmap().asImageBitmap() }.getOrNull()
+                        themeJob?.cancel()
+                        // Freeze the last recorded frame during the color transition.
+                        oldThemeLayer = themeLayer
                         fadingTheme = false
                         appearance = next
                         next.save(this@MainActivity)
-                        themeScope.launch {
+                        themeJob = themeScope.launch {
                             delay(32)
                             fadingTheme = true
                             delay(320)
-                            oldThemeImage = null
+                            oldThemeLayer = null
                         }
                     }
                 }
             ) {
+            Box(Modifier.fillMaxSize().drawWithContent {
+                if (oldThemeLayer == null) themeLayer.record { this@drawWithContent.drawContent() }
+                if (oldThemeLayer == null) drawLayer(themeLayer) else drawContent()
+            }) {
             MiuixKernelSUTheme(appSettings = appearance) {
                 // 开屏 root 门槛：拿不到 root 就根本进不来（拦截式，不是提醒式）。
                 // 放在主题内部，保证检测页与主界面共用同一套配色，不会闪一次白屏。
                 RootGate { AppRoot() }
             }
             }
-            oldThemeImage?.let { image ->
-                Image(image, contentDescription = null, modifier = Modifier.fillMaxSize()
-                    .graphicsLayer { alpha = themeOverlayAlpha })
+            }
+            oldThemeLayer?.let { layer ->
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = themeOverlayAlpha }
+                    .drawWithContent { drawLayer(layer) })
             }
             }
         }

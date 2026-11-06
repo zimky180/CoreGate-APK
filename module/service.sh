@@ -712,45 +712,84 @@ freeze_status_report() {
 # 逐核渐进封锁。注意：这里【没有】"被系统拉回 N 次就放弃"的机制——
 # 被拉回只记录失败，下一轮继续努力封锁，保证用户配置始终真正生效。
 LOCK_STATE=""   # 本轮各核封锁结果，仅用于日志
-do_lock() {
-    LOCK_STATE=""
-    if [ "$DISABLE_CC" = "true" ]; then disable_core_ctl; else restore_core_ctl; fi
-    # 配置名单缩小时，恢复上轮锁过、当前已不在任何封锁名单里的核心。
-    _desired=" $LOCK_LIST $(manual_list | tr '\n' ' ') "
-    for c in $(all_cpus); do
-        [ "$c" = "0" ] && continue
-        case "$_desired" in *" $c "*) continue;; esac
-        cpu_online "$c" || set_cpu "$c" 1
-    done
-    for c in $LOCK_LIST; do
-        [ "$c" = "0" ] && continue                     # cpu0 永不下线
-        if cpu_online "$c"; then
-            if set_cpu "$c" 0; then
-                LOCK_STATE="${LOCK_STATE}${c}:ok "
-                sleep 1   # 逐核渐进：避免同时离线多核造成系统冲击
-            else
-                LOCK_STATE="${LOCK_STATE}${c}:fail "
-                log "封锁 cpu$c 失败（可能被内核/厂商策略拒绝）"
-            fi
+# Shared by daemon and short-lived App commands. Dead owners are reclaimed.
+core_guard_enter() {
+    local _tries=0 _owner
+    while ! mkdir "$CONFIG_DIR/core.lock" 2>/dev/null; do
+        _owner=$(cat "$CONFIG_DIR/core.lock/pid" 2>/dev/null)
+        if [ -n "$_owner" ] && ! kill -0 "$_owner" 2>/dev/null; then
+            rm -f "$CONFIG_DIR/core.lock/pid"
+            rmdir "$CONFIG_DIR/core.lock" 2>/dev/null
         fi
+        _tries=$((_tries+1))
+        [ "$_tries" -ge 15 ] && return 1
+        sleep 1
     done
-    # 维持用户「手动离线」的核：它们不在 LOCK_LIST 里，也必须保持离线。
-    # 不写 LOCK_STATE（那是自动封锁的结果）、不 sleep（避免主循环被拖慢）。
-    for c in $(manual_list); do
-        cpu_online "$c" && set_cpu "$c" 0
+    echo $$ > "$CONFIG_DIR/core.lock/pid"
+}
+core_guard_leave() {
+    rm -f "$CONFIG_DIR/core.lock/pid"
+    rmdir "$CONFIG_DIR/core.lock" 2>/dev/null
+}
+# A driver may change sibling cores while offlining a selected core.
+# Reconcile the complement only after all requested cores have been offlined.
+core_restore_except() {
+    local _core
+    for _core in $(all_cpus); do
+        [ "$_core" = 0 ] && continue
+        case " $1 " in *" $_core "*) continue;; esac
+        cpu_online "$_core" || set_cpu "$_core" 1
     done
+}
+do_lock() {
+    local c _desired _manual _pass
+    LOCK_STATE=""
+    core_guard_enter || { log "核心控制繁忙，本轮跳过"; return 1; }
+    if [ "$DISABLE_CC" = "true" ]; then disable_core_ctl; else restore_core_ctl; fi
+    _manual=$(manual_list | xargs)
+    # A manual choice replaces automatic suggestions, so selecting CPU5 does not add CPU7.
+    if [ -n "$_manual" ] && [ "$(cfg_val lock_cores auto)" = auto ]; then
+        _desired="$_manual"
+    else
+        _desired="$LOCK_LIST $_manual"
+    fi
+    for c in $_desired; do
+        case "$c" in ''|0|*[!0-9]*) continue;; esac
+        if cpu_online "$c"; then set_cpu "$c" 0 && sleep 1; fi
+    done
+    for _pass in 1 2 3; do core_restore_except "$_desired"; done
+    for c in $_desired; do
+        case "$c" in ''|0|*[!0-9]*) continue;; esac
+        if cpu_online "$c"; then LOCK_STATE="${LOCK_STATE}${c}:fail "
+        else LOCK_STATE="${LOCK_STATE}${c}:ok "; fi
+    done
+    core_guard_leave
 }
 do_unlock() {
-    restore_core_ctl
-    # 性能场景临时恢复全部核心；保留手动意图，回到日常模式再应用。
-    for c in $(all_cpus); do
-        [ "$c" = "0" ] && continue
-        if ! cpu_online "$c"; then
-            set_cpu "$c" 1 && log "恢复 cpu$c"
-        fi
+    local c _pass _missing
+    UNLOCK_FAILED=""
+    core_guard_enter || { UNLOCK_FAILED="busy"; return 1; }
+    # Keep core_ctl disabled while full-core performance is requested.
+    # Its original values stay in the backup and are restored on exit/daily policy.
+    disable_core_ctl
+    for _pass in 1 2 3; do
+        core_restore_except ""
+        _missing=""
+        for c in $(all_cpus); do
+            [ "$c" = 0 ] && continue
+            cpu_online "$c" || _missing="$_missing $c"
+        done
+        [ -z "$_missing" ] && break
+        [ "$_pass" -lt 3 ] && sleep 1
     done
+    UNLOCK_FAILED="$_missing"
+    core_guard_leave
+    if [ -n "$UNLOCK_FAILED" ]; then
+        log "恢复未完成，仍离线:$UNLOCK_FAILED"
+        return 1
+    fi
+    return 0
 }
-
 # ---------------- 日常限频（锁定安全频率上限，进一步省电） ----------------
 # 设计取舍：
 #   1) 用【绝对频率上限】而非百分比，避免不同核心硬件上限差异导致数学误差；
@@ -1159,6 +1198,7 @@ cleanup_on_exit() {
     [ "$TRAP_ARMED" = "1" ] || return 0
     [ "$TRAP_DONE" = "1" ] && exit 0
     TRAP_DONE=1
+    if [ "$(cat "$CONFIG_DIR/core.lock/pid" 2>/dev/null)" = "$$" ]; then core_guard_leave; fi
     restore_all
     rm -f "$PID_FILE" "$CONFIG_DIR/crash_flag"
     log "模块服务已退出，全部恢复原始状态"
@@ -1295,6 +1335,7 @@ run() {
         if [ "$ENABLED" != "true" ] || [ "$SAFE_MODE" = "1" ]; then
             if [ "$state" != "off" ] && [ "$state" != "safe" ]; then
                 do_unlock
+                restore_core_ctl
                 remove_freq_cap
                 last_pkg=""
                 if [ "$SAFE_MODE" = "1" ]; then
@@ -1387,10 +1428,10 @@ run() {
             fi
             do_unlock
             remove_freq_cap
-            state="unlocked"
+            if [ -z "$UNLOCK_FAILED" ]; then state="unlocked"; else state="unlock_partial"; fi
             if [ "$last_pkg" != "$pkg" ] || [ "$(cat "$STATE_FILE" 2>/dev/null)" != "$state|$pkg" ]; then
                 last_pkg="$pkg"
-                echo "unlocked|$pkg" > "$STATE_FILE"
+                echo "$state|$pkg" > "$STATE_FILE"
             fi
         fi
 
@@ -1488,6 +1529,10 @@ unlock_once() {
     do_unlock
     remove_freq_cap
     oc=$(online_count)
+    if [ -n "$UNLOCK_FAILED" ]; then
+        echo "UNLOCK_ONCE_FAILED: 在线=${oc} 仍离线=[$UNLOCK_FAILED]"
+        exit 1
+    fi
     echo "UNLOCK_ONCE_DONE: 在线=${oc}"
     echo "OK"
     exit 0
@@ -1509,25 +1554,16 @@ case "$1" in
         _c="$1"
         case "$_c" in ''|*[!0-9]*) echo "BADCPU"; exit 1;; esac
         if manual_add "$_c"; then
-            if [ -f "/sys/devices/system/cpu/cpu$_c/online" ]; then
-                echo 0 > "/sys/devices/system/cpu/cpu$_c/online" 2>/dev/null
-            fi
+            AUTO_COUNT=$(cfg_int auto_lock_count 1)
+            LOCK_LIST=$(cfg_val lock_cores auto)
+            if [ "$LOCK_LIST" = auto ]; then LOCK_LIST=$(detect_high); fi
+            LOCK_LIST=$(printf '%s' "$LOCK_LIST" | tr ',、' ' ')
+            DISABLE_CC=$(cfg_bool disable_core_ctl false)
+            do_lock
             if cpu_online "$_c"; then
                 manual_del "$_c"
                 echo "FAIL"
             else
-                _selected=$(cfg_val lock_cores auto)
-                if [ "$_selected" = auto ]; then
-                    AUTO_COUNT=$(cfg_int auto_lock_count 1)
-                    _selected=$(detect_high)
-                fi
-                _selected=$(printf '%s' "$_selected" | tr ',、' ' ')
-                _keep_off=" $_selected $(manual_list | tr '\n' ' ') "
-                for _other in $(all_cpus); do
-                    [ "$_other" = 0 ] && continue
-                    case "$_keep_off" in *" $_other "*) continue;; esac
-                    cpu_online "$_other" || set_cpu "$_other" 1
-                done
                 echo "OK"
             fi
         else
@@ -1539,12 +1575,14 @@ case "$1" in
         shift
         _c="$1"
         case "$_c" in ''|*[!0-9]*) echo "BADCPU"; exit 1;; esac
+        core_guard_enter || { echo "FAIL"; exit 1; }
         manual_del "$_c"
         # 立刻拉回来，不等下一轮循环（用户点了就该马上看到变化）
         if [ -f "/sys/devices/system/cpu/cpu$_c/online" ]; then
             [ "$_c" = "0" ] || echo 1 > "/sys/devices/system/cpu/cpu$_c/online" 2>/dev/null
         fi
         if cpu_online "$_c"; then echo "OK"; else echo "FAIL"; fi
+        core_guard_leave
         ;;
     --core-clear)
         # 「恢复全部核心」按钮：清空手动清单，再走一遍标准恢复。
