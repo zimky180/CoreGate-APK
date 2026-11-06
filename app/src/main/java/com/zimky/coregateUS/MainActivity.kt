@@ -6,7 +6,25 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.view.drawToBitmap
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.zimky.coregateUS.ui.theme.LocalAppSettings
+import com.zimky.coregateUS.ui.theme.LocalSetAppSettings
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.foundation.layout.size
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -89,10 +107,42 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MiuixKernelSUTheme(appSettings = remember { AppSettings() }) {
+            var appearance by remember { mutableStateOf(AppSettings.load(this@MainActivity)) }
+            val rootView = LocalView.current
+            val themeScope = rememberCoroutineScope()
+            var oldThemeImage by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+            var fadingTheme by remember { mutableStateOf(false) }
+            val themeOverlayAlpha by animateFloatAsState(
+                if (fadingTheme) 0f else 1f, tween(300), label = "themeTransition"
+            )
+            Box(Modifier.fillMaxSize()) {
+            CompositionLocalProvider(
+                LocalAppSettings provides appearance,
+                LocalSetAppSettings provides { next ->
+                    if (next != appearance) {
+                        oldThemeImage = runCatching { rootView.drawToBitmap().asImageBitmap() }.getOrNull()
+                        fadingTheme = false
+                        appearance = next
+                        next.save(this@MainActivity)
+                        themeScope.launch {
+                            delay(32)
+                            fadingTheme = true
+                            delay(320)
+                            oldThemeImage = null
+                        }
+                    }
+                }
+            ) {
+            MiuixKernelSUTheme(appSettings = appearance) {
                 // 开屏 root 门槛：拿不到 root 就根本进不来（拦截式，不是提醒式）。
                 // 放在主题内部，保证检测页与主界面共用同一套配色，不会闪一次白屏。
                 RootGate { AppRoot() }
+            }
+            }
+            oldThemeImage?.let { image ->
+                Image(image, contentDescription = null, modifier = Modifier.fillMaxSize()
+                    .graphicsLayer { alpha = themeOverlayAlpha })
+            }
             }
         }
     }
@@ -259,7 +309,7 @@ private fun AppRoot() {
             if (event == Lifecycle.Event.ON_RESUME) {
                 // 自愈：首次启动时若还没来得及点「允许」，配置就会永远读不到。
                 // 每次回前台发现没读到就重试一次（root 已授权时这是零成本）。
-                if (!cfg.loaded) loadConfig()
+                if (pendingSaves == 0) loadConfig()
                 refresh(false)
             }
         }
@@ -286,6 +336,11 @@ private fun AppRoot() {
      * 再延迟一点补一次刷新，让守护进程的新状态尽快反映到界面。
      */
     fun save(newCfg: CoreConfig, packages: String?, done: ((Boolean, String) -> Unit)?) {
+        if (!cfg.loaded) {
+            done?.invoke(false, "配置尚未成功读取，请先重试读取")
+            com.zimky.coregateUS.ui.Toaster.show("配置未读取，已阻止覆盖保存", true)
+            return
+        }
         configRevision += 1
         pendingSaves += 1
         val previousCfg = cfg
@@ -303,6 +358,7 @@ private fun AppRoot() {
                 main.postDelayed({ probeFreeze() }, 900L)
             }
             if (!ok && cfg == intended) cfg = previousCfg
+            if (!ok) com.zimky.coregateUS.ui.Toaster.show("配置保存失败，请重试", true)
             done?.invoke(
                 ok,
                 if (ok) "OK" else err.takeIf { it.isNotEmpty() } ?: "退出码 $code"
@@ -327,7 +383,7 @@ private fun AppRoot() {
             .fillMaxSize()
             .background(MiuixTheme.colorScheme.background),
         bottomBar = {
-            Box(modifier = Modifier.fillMaxWidth()) {
+            if (subPage == SubPage.NONE) Box(modifier = Modifier.fillMaxWidth()) {
                 val navBottomInset = WindowInsets.navigationBars
                     .asPaddingValues()
                     .calculateBottomPadding()
@@ -350,13 +406,12 @@ private fun AppRoot() {
                             onClick = { activateTab(i) },
                             modifier = Modifier.defaultMinSize(minWidth = 76.dp)
                         ) {
-                            Text(
-                                text = title,
-                                fontSize = 11.sp,
-                                lineHeight = 14.sp,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Visible
+                            Icon(
+                                imageVector = listOf(Icons.Outlined.Memory, Icons.Outlined.Tune,
+                                    Icons.Outlined.Speed, Icons.Outlined.Settings)[i],
+                                contentDescription = title,
+                                tint = MiuixTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
@@ -466,7 +521,7 @@ private fun AppRoot() {
                                 onChanged = {
                                     // 冻结页每次增删都要把数字同步回策略页，
                                     // 否则用户返回后摘要还停在进来之前的旧值
-                                    probeFreeze()
+                                    loadConfig()
                                 }
                             )
                             // 伪造机型页：改动落在 /data/adb/CoreGate/spoof.json，

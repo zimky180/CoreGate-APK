@@ -15,6 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.layout.imePadding
+import top.yukonga.miuix.kmp.basic.TextButton
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
@@ -61,7 +67,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  *
  * 与旧 PolicyPage 对齐的三条关键行为（一条都不能动）：
  *  1. 开关是「由 cfg 单向驱动」，onCheckedChange 里只做 save，不需要 syncing 标记；
- *  2. 轮询间隔只在失焦时提交，且与当前值相同则不写盘（避免无意义 root）；
+ *  2. 轮询间隔由保存按钮或输入法完成键提交，且与当前值相同则不写盘（避免无意义 root）；
  *  3. 输入框获得焦点期间，外部刷新回来的数字不覆盖用户正在编辑的内容。
  *
  * 视觉：Miuix [Card] + [Badge]，与 KernelSU 管理器首页同一套组件语言。
@@ -79,6 +85,8 @@ fun PolicyPage(
     onOpenFreeze: () -> Unit,
     onOpenSpoof: () -> Unit
 ) {
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
     val cs = MiuixTheme.colorScheme
     val s = snapshot
     val daemonAlive = s?.daemonAlive == true
@@ -97,6 +105,22 @@ fun PolicyPage(
     // 输入框文本与焦点状态
     var intervalText by remember { mutableStateOf(cfg.pollInterval.toString()) }
     var inputFocused by remember { mutableStateOf(false) }
+    var intervalSaving by remember { mutableStateOf(false) }
+    fun saveInterval() {
+        if (intervalSaving) return
+        commitInterval(intervalText, cfg) { text, next ->
+            intervalText = text
+            if (next != null) {
+                intervalSaving = true
+                save(next, null) { ok, msg ->
+                    intervalSaving = false
+                    Toaster.show(if (ok) "轮询间隔已设为 ${next.pollInterval} 秒" else "保存失败：$msg", !ok)
+                }
+            }
+        }
+        keyboard?.hide()
+        focus.clearFocus()
+    }
 
     // 外部刷新回来的配置变化：仅在未聚焦时同步显示值
     if (!inputFocused && intervalText != cfg.pollInterval.toString()) {
@@ -112,6 +136,7 @@ fun PolicyPage(
             // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
+            .imePadding()
             .background(cs.surface)
             .verticalScroll(rememberScrollState())
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
@@ -227,21 +252,10 @@ fun PolicyPage(
                         modifier = Modifier
                             .width(84.dp)
                             .onFocusChanged { state ->
-                                val wasFocused = inputFocused
                                 inputFocused = state.isFocused
-                                // 失焦即提交
-                                if (wasFocused && !state.isFocused) {
-                                    commitInterval(intervalText, cfg) { text, newCfg ->
-                                        intervalText = text
-                                        if (newCfg != null) {
-                                            save(newCfg, null) { ok, _ ->
-                                                if (ok) Toaster.show("轮询间隔已设为 ${newCfg.pollInterval} 秒")
-                                            }
-                                        }
-                                    }
-                                }
                             },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { saveInterval() }),
                         textStyle = TextStyle(fontSize = 14.sp, color = cs.onSurface),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = cs.onSurface,
@@ -255,10 +269,14 @@ fun PolicyPage(
                     )
                     HGap(10.dp)
                     Text(text = "秒", color = cs.onSurfaceVariantSummary, fontSize = 14.sp)
+                    HGap(12.dp)
+                    TextButton(onClick = { saveInterval() }, enabled = cfg.loaded && !intervalSaving) {
+                        Text(if (intervalSaving) "保存中" else "保存")
+                    }
                 }
 
                 Gap(10.dp)
-                HintText("允许范围 5 ~ 600 秒，默认 30 秒。留空或填非法值将回退为 30。")
+                HintText("允许范围 5 ~ 600 秒，默认 10 秒。留空或填非法值将回退为 10。")
             }
         }
 
@@ -331,8 +349,8 @@ private fun commitInterval(
     done: (text: String, newCfg: CoreConfig?) -> Unit
 ) {
     val raw = text.trim().toIntOrNull()
-    // 留空或非法：回退默认 30
-    val normalized = if (raw == null) 30 else CoreConfig.clampInterval(raw)
+    // 留空或非法：回退默认 10
+    val normalized = if (raw == null) 10 else CoreConfig.clampInterval(raw)
     // 与当前配置一致：不写盘，只把输入框回填成规范值
     if (normalized == cfg.pollInterval) {
         done(normalized.toString(), null)

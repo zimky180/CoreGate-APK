@@ -39,7 +39,7 @@ data class CoreConfig(
     /** 充电时不锁 */
     var noLockCharging: Boolean = false,
     /** 5~600 秒 */
-    var pollInterval: Int = 30,
+    var pollInterval: Int = 10,
     /** 日常限频 */
     var limitFreq: Boolean = false,
     /**
@@ -161,7 +161,7 @@ data class CoreConfig(
                 c.lockCores = o.optString("lock_cores", "auto")
                 c.disableCoreCtl = o.optBoolean("disable_core_ctl", false)
                 c.noLockCharging = o.optBoolean("no_lock_charging", false)
-                c.pollInterval = clampInterval(o.optInt("poll_interval", 30))
+                c.pollInterval = clampInterval(o.optInt("poll_interval", 10))
                 c.limitFreq = o.optBoolean("limit_freq", false)
                 // 限频阈值：0（前三项）/ -1（pwrlevel）视为「未自定义」，由 service.sh 兜底
                 c.capLittleMhz = o.optInt("cap_little_mhz", 0)
@@ -182,28 +182,8 @@ data class CoreConfig(
                 if (c.lockCores.isBlank()) c.lockCores = "auto"
                 return c
             }
-            // 落到字段级兜底：模块被手改坏、或之前是别的格式
-
-            c.enabled = grabBool(s, "enabled", true)
-            c.lockCores = grabStr(s, "lock_cores", "auto")
-            c.disableCoreCtl = grabBool(s, "disable_core_ctl", false)
-            c.noLockCharging = grabBool(s, "no_lock_charging", false)
-            c.pollInterval = clampInterval(grabInt(s, "poll_interval", 30))
-            c.limitFreq = grabBool(s, "limit_freq", false)
-            c.capLittleMhz = grabInt(s, "cap_little_mhz", 0)
-            c.capBigMhz = grabInt(s, "cap_big_mhz", 0)
-            c.capGpuMhz = grabInt(s, "cap_gpu_mhz", 0)
-            c.capGpuPwrLevel = grabInt(s, "cap_gpu_pwrlevel", -1)
-            c.captureBoost = grabBool(s, "capture_boost", false)
-            c.freezeGrpLog = grabBool(s, "freeze_grp_log", false)
-            c.freezeGrpMedia = grabBool(s, "freeze_grp_media", false)
-            c.freezeGrpCloud = grabBool(s, "freeze_grp_cloud", false)
-            c.freezeGrpDiag = grabBool(s, "freeze_grp_diag", false)
-            c.freezeGrpAd = grabBool(s, "freeze_grp_ad", false)
-            c.freezeGrpSelf = grabBool(s, "freeze_grp_self", false)
-            c.loaded = true
-            if (c.lockCores.isBlank()) c.lockCores = "auto"
-            return c
+            // 解析失败时禁止把默认配置当作真实配置写回。
+            return defaults()
         }
 
         private fun grabBool(s: String, k: String, def: Boolean): Boolean {
@@ -261,21 +241,25 @@ data class CoreConfig(
         fun buildSaveCmd(cfg: CoreConfig, packages: String?): String {
             val sb = StringBuilder()
             sb.append("CFG='").append(base64(cfg.toJsonString())).append("'; ")
-            sb.append("echo \"\$CFG\" | base64 -d > ").append(Paths.FILE).append(".tmp && ")
-            sb.append("mv ").append(Paths.FILE).append(".tmp ").append(Paths.FILE).append(" && ")
+            sb.append("echo \"\$CFG\" | base64 -d > ").append(Paths.FILE).append(".$$.tmp && ")
+            sb.append("mv ").append(Paths.FILE).append(".$$.tmp ").append(Paths.FILE).append(" && ")
             sb.append("chmod 644 ").append(Paths.FILE).append(" || exit 1; ")
 
             if (packages != null) {
                 sb.append("PKG='").append(base64(packages)).append("'; ")
-                sb.append("echo \"\$PKG\" | base64 -d > ").append(Paths.PACKAGES).append(".tmp && ")
-                sb.append("mv ").append(Paths.PACKAGES).append(".tmp ").append(Paths.PACKAGES).append(" && ")
+                sb.append("echo \"\$PKG\" | base64 -d > ").append(Paths.PACKAGES).append(".$$.tmp && ")
+                sb.append("mv ").append(Paths.PACKAGES).append(".$$.tmp ").append(Paths.PACKAGES).append(" && ")
                 sb.append("chmod 644 ").append(Paths.PACKAGES).append(" || exit 1; ")
             }
 
-            sb.append("echo OK")
+            sb.append("echo \"\$CFG\" | base64 -d | cmp -s - ").append(Paths.FILE).append(" || exit 1; sync; echo OK")
             return "mkdir -p " + Paths.DIR + " && ( " +
                 "CG_LOCK='" + Paths.DIR + "/freeze.lock'; cg_wait=0; " +
                 "while ! mkdir \"\$CG_LOCK\" 2>/dev/null; do " +
+                "cg_owner=\$(cat \"\$CG_LOCK/pid\" 2>/dev/null); " +
+                "case \"\$cg_owner\" in ''|*[!0-9]*) : ;; *) " +
+                "if ! kill -0 \"\$cg_owner\" 2>/dev/null; then rm -f \"\$CG_LOCK/pid\"; " +
+                "rmdir \"\$CG_LOCK\" 2>/dev/null; continue; fi ;; esac; " +
                 "cg_wait=\$((cg_wait+1)); [ \"\$cg_wait\" -lt 30 ] || exit 1; sleep 1; done; " +
                 "echo \$\$ > \"\$CG_LOCK/pid\"; " +
                 "trap 'rm -f \"\$CG_LOCK/pid\"; rmdir \"\$CG_LOCK\" 2>/dev/null' EXIT; " +
@@ -336,7 +320,7 @@ data class CoreConfig(
                 }
 
                 val cfg = parse(cfgRaw)
-                if (cfgRaw.isEmpty()) cfg.loaded = false
+                if (code != 0 || cfgRaw.isEmpty()) cfg.loaded = false
                 cb(cfg, pkgRaw, dbg)
             }
         }

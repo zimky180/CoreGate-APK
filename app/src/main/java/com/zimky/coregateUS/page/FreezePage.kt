@@ -106,8 +106,8 @@ fun FreezePage(
     val readCallbacks = remember { mutableListOf<() -> Unit>() }
 
     fun overlay(base: Map<String, String>): Map<String, String> = base.toMutableMap().apply {
-        confirmed.forEach { (pkg, want) -> if (want) put(pkg, "disabled") else remove(pkg) }
-        pending.forEach { (pkg, want) -> if (want) put(pkg, "disabled") else remove(pkg) }
+        confirmed.forEach { (pkg, want) -> if (want) put(pkg, "suspended") else remove(pkg) }
+        pending.forEach { (pkg, want) -> if (want) put(pkg, "suspended") else remove(pkg) }
     }
 
     fun reload(silent: Boolean = false, onDone: (() -> Unit)? = null) {
