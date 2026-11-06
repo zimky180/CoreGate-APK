@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
@@ -261,6 +262,7 @@ fun PolicyPage(
                             },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { saveInterval() }),
+                        shape = CircleShape,
                         textStyle = TextStyle(fontSize = 14.sp, color = cs.onSurface),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = cs.onSurface,
@@ -277,6 +279,8 @@ fun PolicyPage(
                     HGap(12.dp)
                     TextButton(
                         text = if (intervalSaving) "保存中" else "保存",
+                        cornerRadius = 100.dp,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
                         onClick = { saveInterval() }, enabled = cfg.loaded && !intervalSaving
                     )
                 }

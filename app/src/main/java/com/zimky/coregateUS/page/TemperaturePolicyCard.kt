@@ -6,9 +6,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
@@ -58,7 +61,7 @@ internal fun TemperaturePolicyCard(
     }
     fun commitThreshold() {
         if (busy || !cfg.loaded) return
-        val threshold = CoreConfig.clampTemperature(thresholdText.toIntOrNull() ?: 70)
+        val threshold = CoreConfig.clampTemperature(thresholdText.toIntOrNull() ?: 40)
         thresholdText = threshold.toString()
         if (threshold != cfg.temperatureThreshold) persist(cfg.copy(temperatureThreshold = threshold))
         keyboard?.hide()
@@ -82,7 +85,7 @@ internal fun TemperaturePolicyCard(
         else -> "等待模块执行"
     }
     val temp = if (fresh && cfg.temperatureEnabled) parts.getOrNull(1)?.toIntOrNull() else null
-    val surface = cs.surfaceContainer
+    val surface by rememberUpdatedState(cs.surfaceContainer)
     val backdrop = rememberLayerBackdrop { drawRect(surface) }
     val available = cfg.loaded && !busy
 
@@ -94,6 +97,13 @@ internal fun TemperaturePolicyCard(
                 desc = "达到阈值时执行所选动作，降温后恢复日常策略。",
                 trailing = {
                     Switch(checked = cfg.temperatureEnabled, enabled = available,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = androidx.compose.ui.graphics.Color.White,
+                            checkedTrackColor = cs.primary,
+                            checkedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                            uncheckedThumbColor = cs.onSurfaceVariantSummary,
+                            uncheckedTrackColor = cs.surfaceContainerHigh,
+                            uncheckedBorderColor = cs.outline),
                         onCheckedChange = { persist(cfg.copy(temperatureEnabled = it)) })
                 }
             )
@@ -137,7 +147,8 @@ internal fun TemperaturePolicyCard(
                 OutlinedTextField(
                     value = thresholdText,
                     onValueChange = { thresholdText = it.filter(Char::isDigit).take(3) },
-                    label = { Text("触发阈值", fontSize = 12.sp) },
+                    label = { Text("触发阈值", fontSize = 12.sp, color = cs.onSurfaceVariantSummary) },
+                    shape = CircleShape,
                     singleLine = true, enabled = available,
                     modifier = Modifier.width(96.dp).onFocusChanged { focused = it.isFocused },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
@@ -150,9 +161,11 @@ internal fun TemperaturePolicyCard(
                 )
                 Text("℃", color = cs.onSurfaceVariantSummary, fontSize = 16.sp)
                 TextButton(text = if (busy) "保存中" else "保存阈值", enabled = available,
+                    cornerRadius = 100.dp,
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
                     onClick = { commitThreshold() })
             }
-            HintText("35～95℃，默认 70℃。降至阈值以下 3℃时退出温度策略，按轮询间隔检测。")
+            HintText("35～60℃，默认 40℃。降至阈值以下 3℃时退出温度策略，按轮询间隔检测。")
             HintText("温度动作优先于游戏、录屏、充电和息屏策略；总开关与安全模式优先。读取不到有效温度时恢复日常策略，系统自身温控继续生效。")
         }
     }

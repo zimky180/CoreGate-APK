@@ -64,7 +64,7 @@ data class CoreConfig(
     var temperatureEnabled: Boolean = false,
     /** lock / unlock，超过阈值时覆盖普通场景策略。 */
     var temperatureMode: String = "lock",
-    var temperatureThreshold: Int = 70,
+    var temperatureThreshold: Int = 40,
     /** 冻结：日志上报（六组，默认全关，由用户自己开） */
     var freezeGrpLog: Boolean = false,
     /** 冻结：媒体扫描 */
@@ -152,7 +152,7 @@ data class CoreConfig(
             "freeze_grp_diag", "freeze_grp_ad", "freeze_grp_self"
         )
 
-        fun clampTemperature(v: Int): Int = v.coerceIn(35, 95)
+        fun clampTemperature(v: Int): Int = v.coerceIn(35, 60)
 
         fun clampInterval(v: Int): Int = when {
             v < 5 -> 5
@@ -182,7 +182,7 @@ data class CoreConfig(
                 c.captureBoost = o.optBoolean("capture_boost", false)
                 c.temperatureEnabled = o.optBoolean("temperature_enabled", false)
                 c.temperatureMode = if (o.optString("temperature_mode", "lock") == "unlock") "unlock" else "lock"
-                c.temperatureThreshold = clampTemperature(o.optInt("temperature_threshold", 70))
+                c.temperatureThreshold = clampTemperature(o.optInt("temperature_threshold", 40))
                 // 冻结六组，默认全关；用户自己开过才为 true
                 c.freezeGrpLog = o.optBoolean("freeze_grp_log", false)
                 c.freezeGrpMedia = o.optBoolean("freeze_grp_media", false)

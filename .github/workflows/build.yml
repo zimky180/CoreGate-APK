@@ -79,14 +79,14 @@ jobs:
           APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           echo "Found APK: $APK"
           mkdir -p out
-          cp "$APK" "out/CoreGate-APK-debug-v2.2.7.apk"
+          cp "$APK" "out/CoreGate-APK-debug-v2.2.8.apk"
           ls -l out
       - name: Package module
         run: |
           python3 - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile, ZIP_DEFLATED
-          with ZipFile('out/CoreGate-v2.2.7.zip', 'w', ZIP_DEFLATED) as z:
+          with ZipFile('out/CoreGate-v2.2.8.zip', 'w', ZIP_DEFLATED) as z:
               for f in sorted(Path('module').iterdir()):
                   if f.is_file():
                       z.write(f, f.name)
@@ -95,14 +95,14 @@ jobs:
       - name: Upload module
         uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-module-v2.2.7
-          path: out/CoreGate-v2.2.7.zip
+          name: CoreGate-module-v2.2.8
+          path: out/CoreGate-v2.2.8.zip
           if-no-files-found: error
 
       - name: Upload APK
 
         uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-APK-debug-v2.2.7
-          path: out/CoreGate-APK-debug-v2.2.7.apk
+          name: CoreGate-APK-debug-v2.2.8
+          path: out/CoreGate-APK-debug-v2.2.8.apk
           if-no-files-found: error

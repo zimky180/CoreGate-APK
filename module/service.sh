@@ -1138,10 +1138,10 @@ thermal_update() {
     THERMAL_ENABLED=$(cfg_bool temperature_enabled false)
     THERMAL_MODE=$(cfg_val temperature_mode lock)
     [ "$THERMAL_MODE" = "unlock" ] || THERMAL_MODE=lock
-    THERMAL_THRESHOLD=$(cfg_int temperature_threshold 70)
-    case "$THERMAL_THRESHOLD" in ''|*[!0-9]*) THERMAL_THRESHOLD=70;; esac
+    THERMAL_THRESHOLD=$(cfg_int temperature_threshold 40)
+    case "$THERMAL_THRESHOLD" in ''|*[!0-9]*) THERMAL_THRESHOLD=40;; esac
     [ "$THERMAL_THRESHOLD" -lt 35 ] && THERMAL_THRESHOLD=35
-    [ "$THERMAL_THRESHOLD" -gt 95 ] && THERMAL_THRESHOLD=95
+    [ "$THERMAL_THRESHOLD" -gt 60 ] && THERMAL_THRESHOLD=60
     _tk="$THERMAL_ENABLED|$THERMAL_MODE|$THERMAL_THRESHOLD|$ENABLED|$SAFE_MODE"
     if [ "$THERMAL_KEY" != "$_tk" ]; then THERMAL_HOT=0; THERMAL_KEY="$_tk"; fi
     _old_hot="$THERMAL_HOT"

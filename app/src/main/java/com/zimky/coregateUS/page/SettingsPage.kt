@@ -30,6 +30,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,6 +47,7 @@ import com.zimky.coregateUS.core.LogReader
 import com.zimky.coregateUS.core.Paths
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.AnimatedGradientText
 import com.zimky.coregateUS.ui.PageHeading
 import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.theme.LocalAppSettings
@@ -190,8 +192,14 @@ fun SettingsPage(
                     "绿色" to 0xff43a047.toInt(), "紫色" to 0xff8e65d3.toInt())
                 AppearancePills(accents.map { it.first },
                     accents.indexOfFirst { it.second == appearance.keyColor }.coerceAtLeast(0)) { index ->
-                    setAppearance(appearance.copy(colorMode = ColorMode.MONET_SYSTEM,
-                        keyColor = accents[index].second))
+                    val keyColor = accents[index].second
+                    val mode = if (keyColor != 0) ColorMode.MONET_SYSTEM else when (appearance.colorMode) {
+                        ColorMode.MONET_LIGHT -> ColorMode.LIGHT
+                        ColorMode.MONET_DARK, ColorMode.DARK_AMOLED -> ColorMode.DARK
+                        ColorMode.MONET_SYSTEM -> ColorMode.SYSTEM
+                        else -> appearance.colorMode
+                    }
+                    setAppearance(appearance.copy(colorMode = mode, keyColor = keyColor))
                 }
             }
         }
@@ -494,19 +502,19 @@ fun SettingsPage(
                             when (s?.svcState ?: SysProbe.svcCache) {
                                 true -> "已找到"
                                 false -> "缺失"
-                                null -> "未知（未探测）"
-                            }
+                                null -> "未探测"
+                            }, gradientValue = true
                         )
                         KeyValueRow("service.sh", Paths.SERVICE)
                         KeyValueRow("配置", Paths.FILE)
-                        KeyValueRow("配置已读", if (cfg.loaded) "是" else "否（读取失败）")
+                        KeyValueRow("配置状态", if (cfg.loaded) "已读" else "读取失败", gradientValue = true)
                         KeyValueRow(
                             "Root 授权",
                             when {
                                 s == null -> "未探测"
-                                s!!.rootOk -> if (s!!.rootId.isNotEmpty()) "已提权 · ${s!!.rootId}" else "已提权"
-                                else -> "未通过（su 没有返回 uid 0）"
-                            }
+                                s!!.rootOk -> "已提权"
+                                else -> "未通过"
+                            }, gradientValue = true
                         )
 
                         Gap(8.dp)
@@ -514,17 +522,17 @@ fun SettingsPage(
                         Gap(8.dp)
 
                         // ② 守护进程
-                        KeyValueRow("守护进程", if (daemonAlive) "存活" else "未运行")
-                        KeyValueRow("PID", if ((s?.daemonPid ?: -1) > 0) s!!.daemonPid.toString() else "—")
+                        KeyValueRow("守护进程", if (daemonAlive) "存活" else "未运行", gradientValue = true)
+                        KeyValueRow("PID", if ((s?.daemonPid ?: -1) > 0) s!!.daemonPid.toString() else "—", gradientValue = true)
 
                         Gap(8.dp)
                         HairLine()
                         Gap(8.dp)
 
                         // ③ 频率上限
-                        KeyValueRow("小核上限", SysProbe.fmtMhz(s?.littleMaxCur ?: 0))
-                        KeyValueRow("大核上限", SysProbe.fmtMhz(s?.bigMaxCur ?: 0))
-                        KeyValueRow("GPU 上限", SysProbe.fmtGpu(s?.gpuMax ?: 0))
+                        KeyValueRow("小核上限", SysProbe.fmtMhz(s?.littleMaxCur ?: 0), gradientValue = true)
+                        KeyValueRow("大核上限", SysProbe.fmtMhz(s?.bigMaxCur ?: 0), gradientValue = true)
+                        KeyValueRow("GPU 上限", SysProbe.fmtGpu(s?.gpuMax ?: 0), gradientValue = true)
 
                         val dbg = s?.dbg?.trim().orEmpty()
                         if (dbg.isNotEmpty()) {
@@ -579,9 +587,9 @@ fun SettingsPage(
                 Text(text = "关于", color = cs.onSurface, fontSize = 16.sp)
                 Gap(10.dp)
 
-                KeyValueRow("名称", "CoreGate")
-                KeyValueRow("作者", "zimky")
-                KeyValueRow("版本", ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName.orEmpty())
+                KeyValueRow("名称", "CoreGate", gradientValue = true)
+                KeyValueRow("作者", "zimky", gradientValue = true)
+                KeyValueRow("版本", ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName.orEmpty(), gradientValue = true)
                 KeyValueRow("模块目录", Paths.MODULE_DIR)
                 KeyValueRow("数据目录", Paths.DIR)
 
@@ -605,7 +613,7 @@ fun SettingsPage(
 
                 NavRow(
                     title = "酷安",
-                    summary = CONTACT_COOLAPK_HINT,
+                    summary = CONTACT_COOLAPK_HINT, gradientSummary = true,
                     onClick = {
                         if (!openUrl(ctx, CONTACT_COOLAPK_URL)) {
                             Toaster.show("打开酷安失败，手动搜：" + CONTACT_COOLAPK_HINT, true)
@@ -615,7 +623,7 @@ fun SettingsPage(
                 HairLine()
                 NavRow(
                     title = "QQ 群",
-                    summary = CONTACT_QQ_HINT,
+                    summary = CONTACT_QQ_HINT, gradientSummary = true,
                     onClick = {
                         if (!openUrl(ctx, CONTACT_QQ_URL)) {
                             Toaster.show("打开 QQ 失败，群号 " + CONTACT_QQ_HINT, true)
@@ -650,8 +658,8 @@ private fun appendPackage(text: String, pkg: String): String {
 /** 状态徽标：静态，白色文字，与 KernelSU 徽标一致。 */
 @Composable
 private fun StateBadge(text: String, color: Color) {
-    Badge(containerColor = color, contentColor = Color.White) {
-        Text(text = text, fontSize = 12.sp, color = Color.White)
+    Badge(containerColor = color.copy(alpha = 0.14f), contentColor = color) {
+        AnimatedGradientText(text = text, color = color)
     }
 }
 
@@ -669,8 +677,8 @@ private fun BreathingBadge(text: String, color: Color) {
         label = "settingsBadgeAlpha"
     )
     Box(modifier = Modifier.alpha(alpha)) {
-        Badge(containerColor = color, contentColor = Color.White) {
-            Text(text = text, fontSize = 12.sp, color = Color.White)
+        Badge(containerColor = color.copy(alpha = 0.14f), contentColor = color) {
+            AnimatedGradientText(text = text, color = color)
         }
     }
 }
@@ -706,7 +714,7 @@ private fun switchColors() = SwitchDefaults.colors(
 /** 与底栏共用液态胶囊、阻尼滑动和选中指示器。 */
 @Composable
 private fun AppearancePills(labels: List<String>, selected: Int, onSelected: (Int) -> Unit) {
-    val surface = MiuixTheme.colorScheme.surfaceContainer
+    val surface by rememberUpdatedState(MiuixTheme.colorScheme.surfaceContainer)
     val backdrop = rememberLayerBackdrop { drawRect(surface) }
     Box(Modifier.fillMaxWidth()) {
         

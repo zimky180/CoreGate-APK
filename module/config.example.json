@@ -20,5 +20,5 @@
   "freeze_grp_search": false,
   "temperature_enabled": false,
   "temperature_mode": "lock",
-  "temperature_threshold": 70
+  "temperature_threshold": 40
 }

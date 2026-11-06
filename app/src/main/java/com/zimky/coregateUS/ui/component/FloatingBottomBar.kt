@@ -221,7 +221,7 @@ fun FloatingBottomBar(
     val accentColor = MiuixTheme.colorScheme.primary
     val tabContentColor = MiuixTheme.colorScheme.onSurface
     val surfaceContainer = MiuixTheme.colorScheme.surfaceContainer
-    val containerColor = if (isBlurEnabled) surfaceContainer.copy(0.4f) else surfaceContainer
+    val containerColor = if (isBlurEnabled) surfaceContainer.copy(alpha = if (isInDark) 0.65f else 0.88f) else surfaceContainer
 
     val tabsBackdrop = rememberLayerBackdrop()
     val density = LocalDensity.current
@@ -466,10 +466,10 @@ fun FloatingBottomBar(
                             onDrawSurface = {
                                 val progress = dampedDragAnimation.pressProgress
                                 drawRect(
-                                    color = if (!isInDark) Color.Black.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f),
+                                    color = accentColor.copy(alpha = if (isInDark) 0.22f else 0.14f),
                                     alpha = 1f - progress,
                                 )
-                                drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                                drawRect(accentColor.copy(alpha = 0.06f * progress))
                             },
                         )
                         .innerShadow(shape = pillShape) {

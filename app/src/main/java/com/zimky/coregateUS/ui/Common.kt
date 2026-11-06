@@ -195,7 +195,8 @@ fun NavRow(
     title: String,
     summary: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    gradientSummary: Boolean = false
 ) {
     val cs = MiuixTheme.colorScheme
     Row(
@@ -208,7 +209,11 @@ fun NavRow(
     ) {
         Text(text = title, color = cs.onSurface, fontSize = 15.sp)
         Spacer(Modifier.width(10.dp))
-        Text(
+        if (gradientSummary) {
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+                AnimatedGradientText(summary, fontSize = 12.sp)
+            }
+        } else Text(
             text = summary,
             color = cs.onSurfaceVariantSummary,
             fontSize = 12.sp,
@@ -237,7 +242,7 @@ fun CardDivider() {
 
 /** 一行「名称 / 数值」，数值右对齐，诊断与关于页用。 */
 @Composable
-fun KeyValueRow(name: String, value: String) {
+fun KeyValueRow(name: String, value: String, gradientValue: Boolean = false) {
     val cs = MiuixTheme.colorScheme
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
@@ -246,7 +251,8 @@ fun KeyValueRow(name: String, value: String) {
         Text(text = name, color = cs.onSurfaceVariantSummary, fontSize = 12.5.sp)
         Spacer(Modifier.width(12.dp))
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
-            Text(text = value, color = cs.onSurface, fontSize = 12.5.sp)
+            if (gradientValue) AnimatedGradientText(value, fontSize = 12.5.sp)
+            else Text(text = value, color = cs.onSurface, fontSize = 12.5.sp)
         }
     }
 }
