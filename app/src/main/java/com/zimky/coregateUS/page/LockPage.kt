@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +38,21 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.ModuleBridge
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.AnimatedGradientText
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.spring
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.zimky.coregateUS.ui.PageHeading
 import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.SummaryMetric
@@ -118,6 +136,7 @@ fun LockPage(
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -359,8 +378,8 @@ fun LockPage(
                     busy = false
                     if (ok) {
                         Toaster.show(
-                            if (target.online) "已封锁 CPU${target.id}，切到游戏时会自动恢复全部核心。"
-                            else "已解除 CPU${target.id} 的封锁。"
+                            if (target.online) "已封锁 CPU ${target.id}，切到游戏时会自动恢复全部核心。"
+                            else "已解除 CPU ${target.id} 的封锁。"
                         )
                     } else {
                         Toaster.show(msg, true)
@@ -436,62 +455,79 @@ private fun CoreConfirmDialog(
 ) {
     val cs = MiuixTheme.colorScheme
     val locking = core.online
-    // 半透明遮罩盖住整页，拦截点击
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(enabled = false) {},
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
+    val transition = remember { MutableTransitionState(false) }
+    val scope = rememberCoroutineScope()
+    var closing by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { transition.targetState = true }
+    fun close(action: () -> Unit) {
+        if (closing) return
+        closing = true
+        transition.targetState = false
+        scope.launch { delay(220); action() }
+    }
+    Dialog(onDismissRequest = { close(onCancel) },
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BackHandler { close(onCancel) }
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 26.dp)
+                .fillMaxSize()
+                .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null) { close(onCancel) },
+            contentAlignment = Alignment.Center
         ) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
-                Text(
-                    text = if (locking) "封锁 CPU${core.id}？" else "解封 CPU${core.id}？",
-                    color = cs.primary,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = if (locking) {
-                        "封锁后这个核心会下线，功耗下降，但这个核心的算力暂时用不到。" +
-                            "进入游戏或录屏 / 相机时模块会自动恢复全部核心，重启也会还原。"
-                    } else {
-                        "解封后这个核心会重新上线，算力恢复，功耗也会跟着上去。"
-                    },
-                    color = cs.onSurfaceVariantSummary,
-                    fontSize = 12.5.sp,
-                    lineHeight = 19.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "当前频率 ${SysProbe.fmtMhz(core.curFreq)}",
-                    color = cs.onSurface,
-                    fontSize = 12.sp
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+            AnimatedVisibility(visibleState = transition,
+                enter = fadeIn(tween(200)) + scaleIn(spring(dampingRatio = 0.88f, stiffness = 420f), initialScale = 0.90f),
+                exit = fadeOut(tween(180)) + scaleOut(tween(200), targetScale = 0.96f)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp)
+                        .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {},
+                    cornerRadius = 28.dp
                 ) {
-                    TextButton(
-                        text = "取消",
-                        onClick = onCancel,
-                        colors = ButtonDefaults.textButtonColors(
-                            textColor = cs.onSurfaceVariantSummary
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
+                        AnimatedGradientText(
+                            text = if (locking) "封锁 CPU ${core.id}？" else "解封 CPU ${core.id}？",
+                            color = cs.primary,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium
                         )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    TextButton(
-                        text = if (locking) "确认封锁" else "确认解封",
-                        onClick = onConfirm,
-                        colors = ButtonDefaults.textButtonColors(textColor = cs.primary)
-                    )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = if (locking) {
+                                "封锁后这个核心会下线，功耗下降，但这个核心的算力暂时用不到。" +
+                                    "进入游戏或录屏 / 相机时模块会自动恢复全部核心，重启也会还原。"
+                            } else {
+                                "解封后这个核心会重新上线，算力恢复，功耗也会跟着上去。"
+                            },
+                            color = cs.onSurfaceVariantSummary,
+                            fontSize = 12.5.sp,
+                            lineHeight = 19.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "当前频率 ${SysProbe.fmtMhz(core.curFreq)}",
+                            color = cs.onSurface,
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                text = "取消",
+                                onClick = { close(onCancel) },
+                                colors = ButtonDefaults.textButtonColors(
+                                    textColor = cs.onSurfaceVariantSummary
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(
+                                text = if (locking) "确认封锁" else "确认解封",
+                                onClick = { close(onConfirm) },
+                                colors = ButtonDefaults.textButtonColors(textColor = cs.primary)
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -86,6 +86,10 @@ import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.drawBackdrop
+import top.yukonga.miuix.kmp.blur.blur
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.graphics.RectangleShape
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -437,7 +441,6 @@ private fun AppRoot() {
                 modifier = Modifier
                     .fillMaxSize()
                     .layerBackdrop(backdrop)
-                    .statusBarsPadding()
             ) {
                 PageSlot(visible = currentTab == 0) {
                     // 冻结摘要由 probeFreeze() 统一探测后下传，LockPage 自己不发 root。
@@ -479,9 +482,7 @@ private fun AppRoot() {
                 //   把二级页塞进去等于让它在切页时被组合/弃置，破坏该 constraint。
                 //   所以这里在 PageSlot 之外单独一层，用 zIndex(2f) 压住可见页（可见页是 1f）。
                 //
-                // 为什么挂 statusBarsPadding：
-                //   二级页是独立全屏层，不经过外层那个挂了 statusBarsPadding 的 Box，
-                //   不自己补一下标题就会顶进状态栏。
+                // 二级页同样铺满全屏，状态栏留白由页内滚动内容提供。
                 androidx.compose.animation.AnimatedVisibility(
                     visible = subPage != SubPage.NONE,
                     enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) +
@@ -525,6 +526,13 @@ private fun AppRoot() {
                     }
                 }
             }
+
+            // 顶部仍显示系统状态栏；界面在其背后滚动，薄雾保留内容层次。
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                .drawBackdrop(backdrop = backdrop, shape = { RectangleShape },
+                    effects = { blur(18.dp.toPx(), 18.dp.toPx()) },
+                    onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.42f)) }))
 
             // 读取失败提示条：只在配置真的读不到时出现。
             //

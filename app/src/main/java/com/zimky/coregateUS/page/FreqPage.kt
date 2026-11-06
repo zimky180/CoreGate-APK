@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +50,7 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.FreqCap
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.AnimatedGradientText
 import com.zimky.coregateUS.ui.PageHeading
 import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.BottomSpacer
@@ -124,6 +128,7 @@ fun FreqPage(
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -357,11 +362,11 @@ fun FreqPage(
     }
 }
 
-/** 状态徽标：静态，白色文字，与 KernelSU 徽标一致。 */
+/** 状态徽标：浅色底与流动渐变文字，保留状态语义色。 */
 @Composable
 private fun StateBadge(text: String, color: Color) {
-    Badge(containerColor = color, contentColor = Color.White) {
-        Text(text = text, fontSize = 12.sp, color = Color.White)
+    Badge(containerColor = color.copy(alpha = 0.14f), contentColor = color) {
+        AnimatedGradientText(text = text, color = color)
     }
 }
 
@@ -379,9 +384,7 @@ private fun BreathingBadge(text: String, color: Color) {
         label = "freqBadgeAlpha"
     )
     Box(modifier = Modifier.alpha(alpha)) {
-        Badge(containerColor = color, contentColor = Color.White) {
-            Text(text = text, fontSize = 12.sp, color = Color.White)
-        }
+        StateBadge(text, color)
     }
 }
 

@@ -117,7 +117,7 @@ fun CoreCell(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "CPU$id",
+            text = "CPU $id",
             color = if (online) cs.onSurface else cs.onSurfaceVariantSummary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold

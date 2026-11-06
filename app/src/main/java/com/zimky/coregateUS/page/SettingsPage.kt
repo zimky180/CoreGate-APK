@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -48,7 +51,10 @@ import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.theme.LocalAppSettings
 import com.zimky.coregateUS.ui.theme.LocalSetAppSettings
 import com.zimky.coregateUS.ui.theme.ColorMode
-import androidx.compose.foundation.layout.FlowRow
+import com.zimky.coregateUS.ui.component.FloatingBottomBar
+import com.zimky.coregateUS.ui.component.FloatingBottomBarItem
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.zimky.coregateUS.ui.BottomSpacer
@@ -159,6 +165,7 @@ fun SettingsPage(
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -171,24 +178,20 @@ fun SettingsPage(
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("主题模式", color = cs.onSurface, fontSize = 16.sp)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("白色" to ColorMode.LIGHT, "深色" to ColorMode.DARK,
-                        "跟随系统" to ColorMode.SYSTEM, "动态取色" to ColorMode.MONET_SYSTEM).forEach { (label, mode) ->
-                        TextButton(
-                            text = (if (appearance.colorMode == mode) "✓ " else "") + label,
-                            onClick = { setAppearance(appearance.copy(colorMode = mode)) }
-                        )
-                    }
+                val modes = listOf("白色" to ColorMode.LIGHT, "深色" to ColorMode.DARK,
+                    "跟随系统" to ColorMode.SYSTEM, "动态取色" to ColorMode.MONET_SYSTEM)
+                AppearancePills(modes.map { it.first }, modes.indexOfFirst {
+                    it.second == appearance.colorMode || (it.second == ColorMode.MONET_SYSTEM && appearance.colorMode.isMonet)
+                }.coerceAtLeast(0)) { index ->
+                    setAppearance(appearance.copy(colorMode = modes[index].second))
                 }
                 Text("强调色", color = cs.onSurface, fontSize = 14.sp)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("默认" to 0, "蓝色" to 0xff4f8cff.toInt(), "绿色" to 0xff43a047.toInt(),
-                        "紫色" to 0xff8e65d3.toInt()).forEach { (label, color) ->
-                        TextButton(
-                            text = (if (appearance.keyColor == color) "✓ " else "") + label,
-                            onClick = { setAppearance(appearance.copy(keyColor = color)) }
-                        )
-                    }
+                val accents = listOf("默认" to 0, "蓝色" to 0xff4f8cff.toInt(),
+                    "绿色" to 0xff43a047.toInt(), "紫色" to 0xff8e65d3.toInt())
+                AppearancePills(accents.map { it.first },
+                    accents.indexOfFirst { it.second == appearance.keyColor }.coerceAtLeast(0)) { index ->
+                    setAppearance(appearance.copy(colorMode = ColorMode.MONET_SYSTEM,
+                        keyColor = accents[index].second))
                 }
             }
         }
@@ -699,3 +702,25 @@ private fun switchColors() = SwitchDefaults.colors(
     uncheckedTrackColor = MiuixTheme.colorScheme.surfaceContainerHigh,
     uncheckedBorderColor = MiuixTheme.colorScheme.outline
 )
+
+/** 与底栏共用液态胶囊、阻尼滑动和选中指示器。 */
+@Composable
+private fun AppearancePills(labels: List<String>, selected: Int, onSelected: (Int) -> Unit) {
+    val surface = MiuixTheme.colorScheme.surfaceContainer
+    val backdrop = rememberLayerBackdrop { drawRect(surface) }
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.matchParentSize().layerBackdrop(backdrop).background(surface))
+        FloatingBottomBar(
+            modifier = Modifier.fillMaxWidth(), selectedIndex = selected,
+            onSelected = onSelected, backdrop = backdrop, tabsCount = labels.size
+        ) { activate ->
+            labels.forEachIndexed { index, label ->
+                FloatingBottomBarItem(selected = selected == index, onClick = { activate(index) }) {
+                    Text(text = label, fontSize = 11.sp, maxLines = 1,
+                        color = if (selected == index) MiuixTheme.colorScheme.primary
+                            else MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                }
+            }
+        }
+    }
+}

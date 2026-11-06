@@ -39,11 +39,11 @@ enum class ColorMode {
  */
 fun ColorSpec.SpecVersion.effectiveFor(style: PaletteStyle): ColorSpec.SpecVersion = this
 
-/** 界面主题独立保存在 App 私有偏好中，默认浅色。 */
+/** 界面主题独立保存在 App 私有偏好中，默认动态取色与绿色强调色。 */
 @Immutable
 data class AppSettings(
-    val colorMode: ColorMode = ColorMode.LIGHT,
-    val keyColor: Int = 0,
+    val colorMode: ColorMode = ColorMode.MONET_SYSTEM,
+    val keyColor: Int = 0xff43a047.toInt(),
     val paletteStyle: PaletteStyle = PaletteStyle.TonalSpot,
     val colorSpec: ColorSpec.SpecVersion = ColorSpec.SpecVersion.SPEC_2021,
 ) {
@@ -54,9 +54,9 @@ data class AppSettings(
     companion object {
         fun load(context: android.content.Context): AppSettings {
             val prefs = context.getSharedPreferences("appearance", 0)
-            val mode = runCatching { ColorMode.valueOf(prefs.getString("mode", "LIGHT")!!) }
-                .getOrDefault(ColorMode.LIGHT)
-            return AppSettings(colorMode = mode, keyColor = prefs.getInt("keyColor", 0))
+            val mode = runCatching { ColorMode.valueOf(prefs.getString("mode", "MONET_SYSTEM")!!) }
+                .getOrDefault(ColorMode.MONET_SYSTEM)
+            return AppSettings(colorMode = mode, keyColor = prefs.getInt("keyColor", 0xff43a047.toInt()))
         }
     }
 }

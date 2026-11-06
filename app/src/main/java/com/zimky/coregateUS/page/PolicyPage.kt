@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -138,6 +141,7 @@ fun PolicyPage(
             .imePadding()
             .background(cs.surface)
             .verticalScroll(rememberScrollState())
+            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -163,9 +167,9 @@ fun PolicyPage(
                     Gap(10.dp)
                     SubText(
                         if (pkg != null) {
-                            "前台应用 $pkg 命中游戏或录屏/相机名单，全部核心已恢复。"
+                            "全部核心在线。恢复条件可能来自游戏、录屏、充电或温度策略；前台记录：$pkg。"
                         } else {
-                            "全部核心在线：可能命中了游戏/录屏名单，或锁核总开关被关闭。"
+                            "全部核心在线：可能来自自动恢复、温度策略，或锁核总开关已关闭。"
                         }
                     )
                 } else {
@@ -173,9 +177,9 @@ fun PolicyPage(
                     Gap(10.dp)
                     SubText(
                         if (pkg != null) {
-                            "前台应用 $pkg 未命中游戏/录屏名单。"
+                            "当前按日常锁核或温度锁核策略执行。前台记录：$pkg。"
                         } else {
-                            "当前前台应用无法读取（ColorOS 限制），按非游戏处理。"
+                            "前台应用无法读取（ColorOS 限制），当前按日常或温度锁核策略执行。"
                         }
                     )
                     Gap(10.dp)
@@ -229,6 +233,8 @@ fun PolicyPage(
                 HintText("默认关闭：即便在充电，也照常锁核。")
             }
         }
+
+        TemperaturePolicyCard(cfg, snapshot, save)
 
         SectionHeading("检测节奏")
 
