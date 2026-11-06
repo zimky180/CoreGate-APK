@@ -80,6 +80,16 @@ if [ ! -f "$CONFIG_DIR/capture.txt" ]; then
     chmod 0644 "$CONFIG_DIR/capture.txt"
 fi
 
+# 升级时按当前字段模板迁移；保留有效设置，不在开机时重置配置。
+if [ -f "$MODPATH/migrate-config.sh" ]; then
+    . "$MODPATH/migrate-config.sh"
+    if cg_migrate_config "$CONFIG_DIR/config.json" "$MODPATH/config.example.json"; then
+        ui_print "- 配置迁移完成：保留有效设置并清理旧字段"
+    else
+        ui_print "! 配置迁移未完成，保留原配置"
+    fi
+fi
+
 # 检测核心拓扑（仅提示用）
 detect_high_cluster() {
     local maxf=0 c f out=""

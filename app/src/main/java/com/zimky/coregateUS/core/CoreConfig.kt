@@ -89,11 +89,11 @@ data class CoreConfig(
      */
     var rawExtra: Map<String, Any?>? = null
 ) {
-    /** 永远输出全部 App 管理字段，并保留 App 不认识的其它键。 */
+    /** 永远输出全部 App 管理字段，并保留模块仍支持的额外字段，移除旧功能字段。 */
     fun toJson(): JSONObject = JSONObject().apply {
         // 先铺回磁盘上原有的、App 不负责的键（如 auto_lock_count）
         rawExtra?.forEach { (k, v) ->
-            if (k in MANAGED_KEYS) return@forEach
+            if (k !in MODULE_KEYS) return@forEach
             if (v == null) put(k, JSONObject.NULL) else put(k, v)
         }
         // 再覆盖 App 管理的字段
@@ -142,7 +142,12 @@ data class CoreConfig(
             return m
         }
 
-        /** App 自己负责写回的键，其余键一律原样保留。 */
+        /** 模块支持、但没有独立 App 属性的配置字段。 */
+        private val MODULE_KEYS = setOf(
+            "auto_lock_count", "freeze_grp_ai", "freeze_grp_voice", "freeze_grp_games",
+            "freeze_grp_themes", "freeze_grp_search"
+        )
+
         private val MANAGED_KEYS = setOf(
             "enabled", "lock_cores", "disable_core_ctl", "no_lock_charging",
             "poll_interval", "limit_freq", "capture_boost",

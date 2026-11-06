@@ -1,28 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 图标前景：一枚圆角方框 + 内部两个小方块，呼应导航栏「锁核」图标的视觉语言 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- 外框 -->
-    <path
-        android:pathData="M38,32 L70,32 A6,6 0 0 1 76,38 L76,70 A6,6 0 0 1 70,76 L38,76 A6,6 0 0 1 32,70 L32,38 A6,6 0 0 1 38,32 Z"
-        android:strokeColor="#4F8CFF"
-        android:strokeWidth="4"
-        android:fillColor="#00000000" />
-
-    <!-- 左上小块（实心，代表在线的核心） -->
-    <path
-        android:pathData="M42,42 h10 v10 h-10 z"
-        android:fillColor="#4F8CFF" />
-
-    <!-- 右下小块（描边，代表被压制的核心） -->
-    <path
-        android:pathData="M56,56 h10 v10 h-10 z"
-        android:strokeColor="#34C759"
-        android:strokeWidth="3"
-        android:fillColor="#00000000" />
-
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+<path android:pathData="M43,31 L65,31 Q77,31 77,43 L77,49 L68,49 L68,44 Q68,40 64,40 L44,40 Q40,40 40,44 L40,64 Q40,68 44,68 L64,68 Q68,68 68,64 L68,60 L56,60 L56,51 L77,51 L77,65 Q77,77 65,77 L43,77 Q31,77 31,65 L31,43 Q31,31 43,31 Z" android:fillColor="#F4FAFF"/>
+<path android:pathData="M45,45 L51,45 L51,51 L45,51 Z M45,55 L51,55 L51,61 L45,61 Z M55,45 L61,45 L61,49 L55,49 Z" android:fillColor="#64FFD8"/>
+<path android:pathData="M25,44 L28,44 M25,54 L28,54 M25,64 L28,64 M44,25 L44,28 M54,25 L54,28 M64,25 L64,28 M44,80 L44,83 M54,80 L54,83 M64,80 L64,83" android:fillColor="#00000000" android:strokeColor="#A6D9FF" android:strokeWidth="3" android:strokeLineCap="round"/>
 </vector>

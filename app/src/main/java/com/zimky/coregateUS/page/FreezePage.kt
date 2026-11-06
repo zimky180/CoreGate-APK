@@ -124,7 +124,7 @@ fun FreezePage(
         reading = true
         if (!silent) loading = true
         val readConfirmed = confirmed.toMap()
-        sh.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { code, out, _ ->
+        com.zimky.coregateUS.core.FreezeStatus.read { code, out, _ ->
             if (code == 0 && out.contains("[actual]") && out.contains("[groups]")) {
                 snap = FreezeData.parse(out)
                 readConfirmed.forEach { (pkg, want) ->
@@ -192,11 +192,12 @@ fun FreezePage(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) { reload() }
+
+    LaunchedEffect(ctx) {
         labels = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             AppLabels.resolve(ctx.applicationContext, AppLabels.allFreezePkgs())
         }
-        reload()
     }
 
     Column(
@@ -277,7 +278,7 @@ fun FreezePage(
                 actual = overlay(snap.actual),
                 pending = pending,
                 labels = labels,
-                groupBusy = groupPending.isNotEmpty() || pending.isNotEmpty(),
+                groupBusy = groupPending.containsKey(g.key),
                 enabled = groupPending[g.key] ?: cfg.let { c ->
                     // 组开关值优先取引擎回显的真实值；引擎没回显时退回本地配置
                     snap.groups[g.key] ?: c.let {

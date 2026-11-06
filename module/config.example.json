@@ -20,5 +20,9 @@
   "freeze_grp_search": false,
   "temperature_enabled": false,
   "temperature_mode": "lock",
-  "temperature_threshold": 40
+  "temperature_threshold": 40,
+  "cap_little_mhz": 0,
+  "cap_big_mhz": 0,
+  "cap_gpu_mhz": 0,
+  "cap_gpu_pwrlevel": -1
 }

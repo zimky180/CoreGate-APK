@@ -356,10 +356,10 @@ fun LockPage(
                         )
                     }
                     else -> {
-                        StateBadge("建议封锁 $bigOnline 个", Semantic.WARN)
+                        StateBadge("建议再封锁 $bigOnline 个", Semantic.WARN)
                         Gap(10.dp)
                         Text(
-                            text = "当前有 $bigOnline 个大核在线。是否增加封锁数量，请结合流畅度和功耗决定。",
+                            text = "当前有 $bigOnline 个大核在线。是否再封锁，请结合流畅度与功耗决定。",
                             color = cs.onSurfaceVariantSummary,
                             fontSize = 12.sp,
                             lineHeight = 17.sp

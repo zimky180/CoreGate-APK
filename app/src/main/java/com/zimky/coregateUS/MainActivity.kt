@@ -225,6 +225,8 @@ private fun AppRoot() {
     var configRevision by remember { mutableStateOf(0L) }
     var pendingSaves by remember { mutableStateOf(0) }
     var freezeProbeRunning by remember { mutableStateOf(false) }
+    var configLoading by remember { mutableStateOf(false) }
+    var lastFreezeProbeAt by remember { mutableStateOf(0L) }
 
     // 底栏 backdrop。
     //
@@ -285,10 +287,11 @@ private fun AppRoot() {
      * 这里是独立的、低频的路径（只在启动与相关页改动后调用）。
      */
     fun probeFreeze() {
-        if (!alive || freezeProbeRunning) return
+        if (!alive || freezeProbeRunning || System.currentTimeMillis() - lastFreezeProbeAt < 1500L) return
         freezeProbeRunning = true
-        RootShell.exec("sh /data/adb/modules/CoreGate/service.sh --freeze-status") { code, out, _ ->
+        com.zimky.coregateUS.core.FreezeStatus.read { code, out, _ ->
             freezeProbeRunning = false
+            lastFreezeProbeAt = System.currentTimeMillis()
             if (code == 0 && out.contains("[actual]") && out.contains("[groups]")) {
                 frozenCount = FreezeData.parse(out).scopedFrozenCount
             }
@@ -297,8 +300,11 @@ private fun AppRoot() {
 
     /** 读配置。root 授权弹窗被拒时 loaded 会是 false，需要能重试。 */
     fun loadConfig() {
+        if (configLoading) return
+        configLoading = true
         val revision = configRevision
         CoreConfig.load(RootShell) { c, pkgs, _ ->
+            configLoading = false
             if (revision == configRevision && pendingSaves == 0 && c.loaded) {
                 cfg = c
                 packagesRaw = pkgs

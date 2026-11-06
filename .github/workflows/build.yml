@@ -41,7 +41,7 @@ jobs:
           gradle-version: '9.3.1'
           cache-disabled: true
 
-      - name: Build debug APK
+      - name: Build debug and release APKs
         shell: bash
         continue-on-error: true
         env:
@@ -49,7 +49,7 @@ jobs:
         run: |
           mkdir -p ci-logs
           set +e
-          gradle assembleDebug --no-daemon --stacktrace --console=plain > ci-logs/gradle-build.log 2>&1
+          gradle assembleDebug assembleRelease --no-daemon --stacktrace --console=plain > ci-logs/gradle-build.log 2>&1
           rc=$?
           echo "gradle exit code = [$rc]"
           echo "$rc" > ci-logs/exit-code.txt
@@ -79,14 +79,17 @@ jobs:
           APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           echo "Found APK: $APK"
           mkdir -p out
-          cp "$APK" "out/CoreGate-APK-debug-v2.2.8.apk"
+          cp "$APK" "out/CoreGate-APK-debug-v2.3.0.apk"
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          test -n "$RELEASE_APK"
+          cp "$RELEASE_APK" "out/CoreGate-APK-release-v2.3.0-unsigned.apk"
           ls -l out
       - name: Package module
         run: |
           python3 - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile, ZIP_DEFLATED
-          with ZipFile('out/CoreGate-v2.2.8.zip', 'w', ZIP_DEFLATED) as z:
+          with ZipFile('out/CoreGate-v2.3.0.zip', 'w', ZIP_DEFLATED) as z:
               for f in sorted(Path('module').iterdir()):
                   if f.is_file():
                       z.write(f, f.name)
@@ -95,14 +98,20 @@ jobs:
       - name: Upload module
         uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-module-v2.2.8
-          path: out/CoreGate-v2.2.8.zip
+          name: CoreGate-module-v2.3.0
+          path: out/CoreGate-v2.3.0.zip
           if-no-files-found: error
 
       - name: Upload APK
 
         uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-APK-debug-v2.2.8
-          path: out/CoreGate-APK-debug-v2.2.8.apk
+          name: CoreGate-APK-debug-v2.3.0
+          path: out/CoreGate-APK-debug-v2.3.0.apk
+          if-no-files-found: error
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoreGate-APK-release-v2.3.0-unsigned
+          path: out/CoreGate-APK-release-v2.3.0-unsigned.apk
           if-no-files-found: error

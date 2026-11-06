@@ -265,6 +265,7 @@ detect_high() {
             [ -n "$_high" ] && printf '%s\n' "$_high" > "$CONFIG_DIR/high_cores"
         fi
     fi
+    [ -n "$_high" ] || _high=$(all_cpus | tail -n 1)
     printf '%s\n' $_high | grep -E '^[0-9]+$' | grep -v '^0$' | sort -nru | head -n "$_cap" | tr '\n' ' '
 }
 # ---------------- 手动离线核心（App 点击单核下线） ----------------
@@ -682,7 +683,7 @@ freeze_status_report() {
     pm list packages -d --user "$FREEZE_USER" 2>/dev/null | sed 's/^package://' | sed 's/$/\tdisabled/'
     # 2) 挂起列表：从 dumpsys package 里按包名上下文找 suspended=true
     #    只认 user 0（FREEZE_USER 默认 0），与冻结时保持同一用户口径
-    dumpsys package 2>/dev/null | awk -v u="User $FREEZE_USER:" '
+    dumpsys package --all-components packages 2>/dev/null | awk -v u="User $FREEZE_USER:" '
         /^[[:space:]]*Package \[/ {
             # 形如 "  Package [com.foo.bar] (abc123):"
             pkg = $0
@@ -1176,7 +1177,7 @@ thermal_update() {
 # 卸载 / 删除 / 禁用时：恢复核心、频率、core_ctl 原始值，不留任何运行残留
 restore_all() {
     # 卸载清空手动意图，避免以后重新启用时沿用旧封锁。
-    manual_clear
+    [ "$1" = "preserve" ] || manual_clear
     rm -f "$THERMAL_STATE_FILE" "$THERMAL_STATE_FILE.$$.tmp"
     LOCK_LIST=$(all_cpus)
     do_unlock
@@ -1199,7 +1200,11 @@ cleanup_on_exit() {
     [ "$TRAP_DONE" = "1" ] && exit 0
     TRAP_DONE=1
     if [ "$(cat "$CONFIG_DIR/core.lock/pid" 2>/dev/null)" = "$$" ]; then core_guard_leave; fi
-    restore_all
+    if [ -f "$MODDIR/module.prop" ] && [ ! -f "$MODDIR/remove" ] && [ ! -f "$MODDIR/disable" ]; then
+        restore_all preserve
+    else
+        restore_all
+    fi
     rm -f "$PID_FILE" "$CONFIG_DIR/crash_flag"
     log "模块服务已退出，全部恢复原始状态"
     exit 0
@@ -1225,7 +1230,8 @@ run() {
 
     # ========== 崩溃自愈：上次异常退出（系统崩溃/强杀）→ 本次进入安全模式，不锁任何核 ==========
     CRASH_FLAG="$CONFIG_DIR/crash_flag"
-    if [ -f "$CRASH_FLAG" ]; then
+    BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
+    if [ -n "$BOOT_ID" ] && [ "$(cat "$CRASH_FLAG" 2>/dev/null)" = "$BOOT_ID" ]; then
         SAFE_MODE=1
         log "⚠️ 检测到上次异常退出标记，进入【安全模式】：本次不封锁任何核心（重启一次后自动恢复）"
     else
@@ -1258,7 +1264,7 @@ run() {
     thermal_update
     if [ "$ENABLED" = "true" ] && [ -n "$LOCK_LIST" ] && [ "$SAFE_MODE" = "0" ] &&
         { [ "$THERMAL_HOT" != "1" ] || [ "$THERMAL_MODE" != "unlock" ]; }; then
-        touch "$CRASH_FLAG"
+        printf '%s\n' "$BOOT_ID" > "$CRASH_FLAG"
         do_lock
         sleep 20
         rm -f "$CRASH_FLAG"
@@ -1600,6 +1606,7 @@ case "$1" in
         #
         # [applied] 本模块记录在案的冻结项：包名<TAB>方式
         # [actual]  系统当前真实的停用/挂起列表：包名<TAB>方式（含非本模块所为）
+        _status_actual=$(freeze_status_report)
         echo "[applied]"
         if [ -f "$FREEZE_STATE" ] && [ -s "$FREEZE_STATE" ]; then
             while IFS='	' read -r _p _st _md; do
@@ -1611,7 +1618,7 @@ case "$1" in
             # 记录文件不存在或为空（freeze_restore_all 结尾会 rm 掉它，模块升级也可能丢）：
             # 用「组开关为 on 且组内包在系统里确实被停用/挂起」反推，
             # 免得界面把已经冻上的包报成「没有冻结」。只补真实出现在 actual 里的包。
-            _fb_actual=$(freeze_status_report 2>/dev/null | cut -f1)
+            _fb_actual=$(printf '%s\n' "$_status_actual" | cut -f1)
             echo "$FREEZE_TABLE" | while IFS= read -r _fb_line; do
                 [ -z "$_fb_line" ] && continue
                 _fb_key=$(printf %s "$_fb_line" | cut -d"|" -f1)
@@ -1624,7 +1631,7 @@ case "$1" in
             done
         fi
         echo "[actual]"
-        freeze_status_report
+        printf '%s\n' "$_status_actual"
         echo "[groups]"
         # 各组开关当前值，供界面回显
         echo "$FREEZE_TABLE" | while IFS= read -r _line; do
