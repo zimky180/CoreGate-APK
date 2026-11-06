@@ -270,9 +270,10 @@ fun PolicyPage(
                     HGap(10.dp)
                     Text(text = "秒", color = cs.onSurfaceVariantSummary, fontSize = 14.sp)
                     HGap(12.dp)
-                    TextButton(onClick = { saveInterval() }, enabled = cfg.loaded && !intervalSaving) {
-                        Text(if (intervalSaving) "保存中" else "保存")
-                    }
+                    TextButton(
+                        text = if (intervalSaving) "保存中" else "保存",
+                        onClick = { saveInterval() }, enabled = cfg.loaded && !intervalSaving
+                    )
                 }
 
                 Gap(10.dp)

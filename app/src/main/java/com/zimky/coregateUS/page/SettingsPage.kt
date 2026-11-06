@@ -174,18 +174,20 @@ fun SettingsPage(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("白色" to ColorMode.LIGHT, "深色" to ColorMode.DARK,
                         "跟随系统" to ColorMode.SYSTEM, "动态取色" to ColorMode.MONET_SYSTEM).forEach { (label, mode) ->
-                        TextButton(onClick = { setAppearance(appearance.copy(colorMode = mode)) }) {
-                            Text((if (appearance.colorMode == mode) "✓ " else "") + label)
-                        }
+                        TextButton(
+                            text = (if (appearance.colorMode == mode) "✓ " else "") + label,
+                            onClick = { setAppearance(appearance.copy(colorMode = mode)) }
+                        )
                     }
                 }
                 Text("强调色", color = cs.onSurface, fontSize = 14.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("默认" to 0, "蓝色" to 0xff4f8cff.toInt(), "绿色" to 0xff43a047.toInt(),
                         "紫色" to 0xff8e65d3.toInt()).forEach { (label, color) ->
-                        TextButton(onClick = { setAppearance(appearance.copy(keyColor = color)) }) {
-                            Text((if (appearance.keyColor == color) "✓ " else "") + label)
-                        }
+                        TextButton(
+                            text = (if (appearance.keyColor == color) "✓ " else "") + label,
+                            onClick = { setAppearance(appearance.copy(keyColor = color)) }
+                        )
                     }
                 }
             }
