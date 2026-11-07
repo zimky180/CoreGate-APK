@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
                 else (680L * scale - elapsed).toLong().coerceIn(0L, 1200L)
             splash.postDelayed({
                 val target = introIconBounds
-                if (scale == 0f || target == null || icon.width == 0 || icon.height == 0) {
+                if (scale == 0f || target == null || icon == null || icon.width == 0 || icon.height == 0) {
                     systemIntroComplete = true
                     splash.remove()
                 } else {
