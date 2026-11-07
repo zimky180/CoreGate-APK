@@ -44,19 +44,25 @@ fun ColorSpec.SpecVersion.effectiveFor(style: PaletteStyle): ColorSpec.SpecVersi
 data class AppSettings(
     val colorMode: ColorMode = ColorMode.MONET_SYSTEM,
     val keyColor: Int = 0xff43a047.toInt(),
+    val gravityGlow: Boolean = true,
+    val skipStartupIntro: Boolean = false,
     val paletteStyle: PaletteStyle = PaletteStyle.TonalSpot,
     val colorSpec: ColorSpec.SpecVersion = ColorSpec.SpecVersion.SPEC_2021,
 ) {
     fun save(context: android.content.Context) {
         context.getSharedPreferences("appearance", 0).edit()
-            .putString("mode", colorMode.name).putInt("keyColor", keyColor).apply()
+            .putString("mode", colorMode.name).putInt("keyColor", keyColor)
+            .putBoolean("gravityGlow", gravityGlow)
+            .putBoolean("skipStartupIntro", skipStartupIntro).apply()
     }
     companion object {
         fun load(context: android.content.Context): AppSettings {
             val prefs = context.getSharedPreferences("appearance", 0)
             val mode = runCatching { ColorMode.valueOf(prefs.getString("mode", "MONET_SYSTEM")!!) }
                 .getOrDefault(ColorMode.MONET_SYSTEM)
-            return AppSettings(colorMode = mode, keyColor = prefs.getInt("keyColor", 0xff43a047.toInt()))
+            return AppSettings(colorMode = mode, keyColor = prefs.getInt("keyColor", 0xff43a047.toInt()),
+                gravityGlow = prefs.getBoolean("gravityGlow", true),
+                skipStartupIntro = prefs.getBoolean("skipStartupIntro", false))
         }
     }
 }

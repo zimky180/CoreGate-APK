@@ -236,6 +236,16 @@ fun SettingsPage(
                     }
                     setAppearance(appearance.copy(colorMode = mode, keyColor = keyColor))
                 }
+                SwitchRow(title = "重力光晕", desc = "光晕随手机倾斜漂移；传感器不可用时自动飘动。") {
+                    Switch(checked = appearance.gravityGlow, onCheckedChange = {
+                        setAppearance(appearance.copy(gravityGlow = it))
+                    }, colors = switchColors())
+                }
+                SwitchRow(title = "直接跳过开屏动画", desc = "开启后，下次启动直接进入应用。") {
+                    Switch(checked = appearance.skipStartupIntro, onCheckedChange = {
+                        setAppearance(appearance.copy(skipStartupIntro = it))
+                    }, colors = switchColors())
+                }
             }
         }
 

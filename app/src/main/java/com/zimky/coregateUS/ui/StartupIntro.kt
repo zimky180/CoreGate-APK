@@ -12,6 +12,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -128,12 +130,12 @@ fun StartupIntro(
             android.provider.Settings.Global.getFloat(context.contentResolver,
                 android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
         }.getOrDefault(1f)
-        if (scale == 0f) 0 else 2600
+        if (scale == 0f) 0 else 1250
     }
     LaunchedEffect(owner, duration, started, moving) {
         if (!started || !moving) return@LaunchedEffect
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            handoff.animateTo(1f, tween(if (duration == 0) 0 else 480,
+            handoff.animateTo(1f, tween(if (duration == 0) 0 else 250,
                 easing = androidx.compose.animation.core.FastOutSlowInEasing))
             currentMotionFinished()
             val remaining = ((1f - clock.value) * duration).toInt().coerceAtLeast(0)
@@ -142,7 +144,11 @@ fun StartupIntro(
             kotlinx.coroutines.awaitCancellation()
         }
     }
-    BackHandler { currentFinished() }
+    val finishIntro = {
+        currentMotionFinished()
+        currentFinished()
+    }
+    BackHandler { finishIntro() }
     val iconIn = if (started) 1f else 0f
     Box(
         Modifier.fillMaxSize().graphicsLayer { alpha = 1f - phase(clock.value, 0.84f, 1f) }
@@ -284,5 +290,13 @@ fun StartupIntro(
             )
             Spacer(Modifier.height(12.dp))
         }
+        Text(
+            text = "跳过",
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 14.sp,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(16.dp)
+                .background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
+                .clickable { finishIntro() }.padding(horizontal = 20.dp, vertical = 12.dp)
+        )
     }
 }

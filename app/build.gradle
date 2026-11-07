@@ -16,8 +16,8 @@ android {
         // 不用 tools:overrideLibrary 绕过检查（绕过会失去构建期保护）。
         minSdk 33
         targetSdk 37
-        versionCode 231
-        versionName "2.3.1"
+        versionCode 232
+        versionName "2.3.2"
     }
 
     buildTypes {

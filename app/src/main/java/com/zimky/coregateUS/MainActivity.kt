@@ -117,10 +117,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val initialAppearance = AppSettings.load(this)
         // Keep the actual system splash animation, then move its icon to the
         // measured Compose icon bounds before starting the full-screen particles.
         systemIntroComplete = savedInstanceState != null
         splashScreen.setOnExitAnimationListener { splash ->
+            if (initialAppearance.skipStartupIntro) {
+                systemIntroComplete = true
+                introOverlayRemoved = true
+                splash.remove()
+                return@setOnExitAnimationListener
+            }
             val icon = splash.iconView
             val scale = runCatching {
                 android.provider.Settings.Global.getFloat(contentResolver,
@@ -130,7 +137,7 @@ class MainActivity : ComponentActivity() {
                 java.time.Duration.between(it, java.time.Instant.now()).toMillis()
             } ?: 680L
             val remaining = if (scale == 0f || savedInstanceState != null) 0L
-                else ((splash.iconAnimationDuration?.toMillis() ?: 680L) * scale - elapsed).toLong().coerceIn(0L, 1200L)
+                else ((splash.iconAnimationDuration?.toMillis() ?: 680L) * scale - elapsed).toLong().coerceIn(0L, 250L)
             splash.postDelayed({
                 if (icon != null && icon.width > 0 && icon.height > 0) {
                     val location = IntArray(2)
@@ -159,9 +166,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            var introVisible by rememberSaveable { mutableStateOf(savedInstanceState == null) }
-            var introMotionComplete by remember { mutableStateOf(savedInstanceState != null) }
-            var appearance by remember { mutableStateOf(AppSettings.load(this@MainActivity)) }
+            var introVisible by rememberSaveable { mutableStateOf(savedInstanceState == null && !initialAppearance.skipStartupIntro) }
+            var introMotionComplete by remember { mutableStateOf(savedInstanceState != null || initialAppearance.skipStartupIntro) }
+            var appearance by remember { mutableStateOf(initialAppearance) }
             val themeLayer = androidx.compose.ui.graphics.rememberGraphicsLayer()
             var oldThemeLayer by remember { mutableStateOf<androidx.compose.ui.graphics.layer.GraphicsLayer?>(null) }
             var themeJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -174,8 +181,16 @@ class MainActivity : ComponentActivity() {
             Box(Modifier.fillMaxSize()) {
             CompositionLocalProvider(
                 LocalAppSettings provides appearance,
-                LocalSetAppSettings provides { next ->
+                LocalSetAppSettings provides updateAppearance@{ next ->
                     if (next != appearance) {
+                        val themeChanged = next.colorMode != appearance.colorMode ||
+                            next.keyColor != appearance.keyColor ||
+                            next.paletteStyle != appearance.paletteStyle || next.colorSpec != appearance.colorSpec
+                        if (!themeChanged) {
+                            appearance = next
+                            next.save(this@MainActivity)
+                            return@updateAppearance
+                        }
                         themeJob?.cancel()
                         // Freeze the last recorded frame during the color transition.
                         oldThemeLayer = themeLayer

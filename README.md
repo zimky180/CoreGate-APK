@@ -1,3 +1,3 @@
-# CoreGate system particle intro test
+# CoreGate v2.3.2 build
 
 Isolated build repository.

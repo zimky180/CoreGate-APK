@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,7 +38,13 @@ fun LiquidCard(
 
 /** Only the drawing observes the animation; children do not recompose on every frame. */
 internal fun Modifier.liquidSheen(): Modifier = composed {
-    val tint = MiuixTheme.colorScheme.primary
+    val appearance = com.zimky.coregateUS.ui.theme.LocalAppSettings.current
+    if (!appearance.gravityGlow) return@composed this
+    val cs = MiuixTheme.colorScheme
+    // Use the actual accent seed rather than a muted tonal primary. Keep the
+    // light visible against both light and dark cards for every accent.
+    val tint = if (appearance.keyColor != 0) Color(appearance.keyColor) else cs.primary
+    val glowAlpha = if (cs.surfaceContainer.luminance() < 0.35f) 0.24f else 0.19f
     val gravity = rememberLiquidGravity()
     val position = remember { floatArrayOf(0.5f, 0.08f) }
     val frameTime = remember { longArrayOf(0L) }
@@ -68,8 +75,8 @@ internal fun Modifier.liquidSheen(): Modifier = composed {
             val center = Offset(size.width * position[0], size.height * position[1])
             scale(1f, depth / radius, pivot = center) {
                 drawCircle(Brush.radialGradient(
-                    0f to tint.copy(alpha = 0.105f),
-                    0.42f to tint.copy(alpha = 0.055f),
+                    0f to tint.copy(alpha = glowAlpha),
+                    0.42f to tint.copy(alpha = glowAlpha * 0.52f),
                     1f to Color.Transparent,
                     center = center, radius = radius
                 ), radius = radius, center = center)
