@@ -62,6 +62,8 @@ private class HomeStream(context: Context) {
     private var media: MediaPlayer? = null
     private var prepared = false
     private var wantsPlay = false
+    private var foreground = false
+    private var focusHeld = false
     private var source = ""
     var onCompleted: () -> Unit = {}
     private var pendingSeek: Int? = null
@@ -81,11 +83,30 @@ private class HomeStream(context: Context) {
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(attributes).setOnAudioFocusChangeListener { change ->
-            if (change != AudioManager.AUDIOFOCUS_GAIN) pause()
+            when (change) {
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    focusHeld = true
+                    media?.setVolume(1f, 1f)
+                    if (foreground && wantsPlay && prepared) start()
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> media?.setVolume(0.2f, 0.2f)
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    focusHeld = false
+                    pausePlayback()
+                }
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    focusHeld = false
+                    pausePlayback()
+                }
+            }
         }.build()
 
     fun toggle(url: String) {
         if (playing || loading) { pause(); return }
+        play(url)
+    }
+
+    private fun play(url: String) {
         if (url.isBlank()) return
         wantsPlay = true
         if (prepared && source == url) { start(); return }
@@ -114,7 +135,7 @@ private class HomeStream(context: Context) {
                     wantsPlay = false
                     position = duration
                     message = "播放结束"
-                    audio.abandonAudioFocusRequest(focus)
+                    abandonFocus()
                     onCompleted()
                 }
             }
@@ -144,13 +165,15 @@ private class HomeStream(context: Context) {
     }
 
     private fun start() {
-        if (!prepared) return
-        if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+        if (!prepared || !foreground || !wantsPlay) return
+        if (!focusHeld && audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             wantsPlay = false
             message = "暂时无法播放，请稍后重试"
             return
         }
+        focusHeld = true
         try {
+            media?.setVolume(1f, 1f)
             if (duration > 0 && position >= duration) media?.seekTo(0)
             media?.start()
             playing = true
@@ -158,13 +181,34 @@ private class HomeStream(context: Context) {
         } catch (_: Exception) { fail("播放中断，请重试") }
     }
 
+    private fun abandonFocus() {
+        focusHeld = false
+        audio.abandonAudioFocusRequest(focus)
+    }
+
+    private fun pausePlayback() {
+        try { if (playing) { media?.pause(); tick() } } catch (_: Exception) { releaseMedia() }
+        playing = false
+        if (prepared) message = "已暂停"
+    }
+
+    fun setForeground(active: Boolean) {
+        foreground = active
+        if (!active) {
+            // Keep playback intent and position for the next foreground visit.
+            pausePlayback()
+            abandonFocus()
+        } else if (wantsPlay) {
+            if (prepared) start()
+            else if (!loading && source.isNotBlank()) play(source)
+        }
+    }
+
     fun pause() {
         wantsPlay = false
         if (loading) { releaseMedia(); message = "已取消加载"; return }
-        try { if (playing) media?.pause() } catch (_: Exception) { releaseMedia() }
-        playing = false
-        message = if (prepared) "已暂停" else message
-        audio.abandonAudioFocusRequest(focus)
+        pausePlayback()
+        abandonFocus()
     }
 
     fun tick() {
@@ -193,7 +237,7 @@ private class HomeStream(context: Context) {
         duration = 0
         pendingSeek = null
         previous?.release()
-        audio.abandonAudioFocusRequest(focus)
+        abandonFocus()
     }
     fun close() { releaseMedia() }
 }
@@ -201,8 +245,6 @@ private class HomeStream(context: Context) {
 private data class HomeTrack(val id: String, val url: String, val title: String, val artist: String)
 
 private val bundledTracks = listOf(
-    HomeTrack("builtin_a01", "asset:///music/a01.m4a", "甲乙丙丁", "李佳薇"),
-    HomeTrack("builtin_a02", "asset:///music/a02.m4a", "左转灯", "派伟俊 & mac ova seas"),
     HomeTrack("builtin_a03", "asset:///music/a03.m4a", "迷失环境", "IN-K & 王忻辰"),
     HomeTrack("builtin_a04", "asset:///music/a04.m4a", "坏女孩", "徐良"),
     HomeTrack("builtin_a05", "asset:///music/a05.m4a", "素颜", "许嵩 & 何曼婷"),
@@ -229,7 +271,10 @@ fun BoxScope.HomeMusicPlayer() {
     val prefs = remember(context) { context.getSharedPreferences("home_music", Context.MODE_PRIVATE) }
     val stream = remember(context) { HomeStream(context) }
     var tracks by remember {
-        val saved = readTracks(prefs)
+        val saved = readTracks(prefs).filterNot {
+            it.id in setOf("builtin_a01", "builtin_a02") ||
+                it.url in setOf("asset:///music/a01.m4a", "asset:///music/a02.m4a")
+        }
         val additions = when {
             !prefs.getBoolean("bundled_seeded_v1", false) -> bundledTracks
             !prefs.getBoolean("bundled_seeded_v2", false) -> bundledTracks.filter { it.id in setOf("builtin_a05", "builtin_a06") }
@@ -239,7 +284,10 @@ fun BoxScope.HomeMusicPlayer() {
         val initial = saved + additions.filter { built -> saved.none { it.id == built.id } }
         mutableStateOf(initial)
     }
-    var currentId by remember { mutableStateOf(prefs.getString("current_id", null)) }
+    var currentId by remember {
+        mutableStateOf(prefs.getString("current_id", null)?.takeIf { id -> tracks.any { it.id == id } }
+            ?: tracks.firstOrNull()?.id)
+    }
     val track = tracks.firstOrNull { it.id == currentId } ?: tracks.firstOrNull()
     var direction by remember { mutableIntStateOf(1) }
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -263,11 +311,12 @@ fun BoxScope.HomeMusicPlayer() {
         prefs.edit().putString("tracks", array.toString()).putString("current_id", id).apply()
     }
     LaunchedEffect(Unit) {
-        if (!prefs.getBoolean("bundled_seeded_v3", false)) {
+        if (!prefs.getBoolean("bundled_pruned_v4", false)) {
             persist(tracks, currentId ?: tracks.firstOrNull()?.id)
             prefs.edit().putBoolean("bundled_seeded_v1", true)
                 .putBoolean("bundled_seeded_v2", true)
-                .putBoolean("bundled_seeded_v3", true).apply()
+                .putBoolean("bundled_seeded_v3", true)
+                .putBoolean("bundled_pruned_v4", true).apply()
         }
     }
     fun select(item: HomeTrack, step: Int) {
@@ -357,8 +406,13 @@ fun BoxScope.HomeMusicPlayer() {
     }
     DisposableEffect(owner, stream) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) stream.pause()
+            when (event) {
+                Lifecycle.Event.ON_START -> stream.setForeground(true)
+                Lifecycle.Event.ON_STOP -> stream.setForeground(false)
+                else -> Unit
+            }
         }
+        stream.setForeground(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer); stream.close() }
     }

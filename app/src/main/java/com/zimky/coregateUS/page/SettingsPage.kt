@@ -228,13 +228,7 @@ fun SettingsPage(
                 AppearancePills(accents.map { it.first },
                     accents.indexOfFirst { it.second == appearance.keyColor }.coerceAtLeast(0)) { index ->
                     val keyColor = accents[index].second
-                    val mode = if (keyColor != 0) ColorMode.MONET_SYSTEM else when (appearance.colorMode) {
-                        ColorMode.MONET_LIGHT -> ColorMode.LIGHT
-                        ColorMode.MONET_DARK, ColorMode.DARK_AMOLED -> ColorMode.DARK
-                        ColorMode.MONET_SYSTEM -> ColorMode.SYSTEM
-                        else -> appearance.colorMode
-                    }
-                    setAppearance(appearance.copy(colorMode = mode, keyColor = keyColor))
+                    setAppearance(appearance.copy(keyColor = keyColor))
                 }
                 SwitchRow(title = "重力光晕", desc = "光晕随手机倾斜漂移；传感器不可用时自动飘动。") {
                     Switch(checked = appearance.gravityGlow, onCheckedChange = {

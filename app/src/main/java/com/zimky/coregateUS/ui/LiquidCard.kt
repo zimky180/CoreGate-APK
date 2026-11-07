@@ -89,26 +89,33 @@ internal fun Modifier.liquidSheen(): Modifier = composed {
 internal fun Modifier.capillaryTouch(): Modifier = composed {
     if (!com.zimky.coregateUS.ui.theme.LocalAppSettings.current.waterRipples) return@composed this
     val tint = MiuixTheme.colorScheme.primary
-    val wave = remember { Animatable(1f) }
-    var origin by remember { mutableStateOf(Offset.Zero) }
+    val waves = remember { mutableStateListOf<TouchWave>() }
     val scope = rememberCoroutineScope()
-    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     clipToBounds().pointerInput(Unit) {
         awaitPointerEventScope {
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
-                event.changes.firstOrNull { it.pressed && !it.previousPressed }?.let { press ->
-                    origin = press.position
-                    job?.cancel()
-                    job = scope.launch {
-                        wave.snapTo(0f)
-                        wave.animateTo(1f, tween(1100, easing = LinearEasing))
+                event.changes.filter { it.pressed && !it.previousPressed }.forEach { press ->
+                    val wave = TouchWave(press.position)
+                    waves.add(wave)
+                    scope.launch {
+                        try {
+                            wave.progress.animateTo(1f, tween(1100, easing = LinearEasing))
+                        } finally {
+                            waves.remove(wave)
+                        }
                     }
                 }
             }
         }
     }.drawWithContent {
         drawContent()
-        drawCapillaryWaves(origin, wave.value, tint, intensity = 0.65f)
+        waves.forEach { wave ->
+            drawCapillaryWaves(wave.origin, wave.progress.value, tint, intensity = 0.65f)
+        }
     }
+}
+
+private class TouchWave(val origin: Offset) {
+    val progress = Animatable(0f)
 }

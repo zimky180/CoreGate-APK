@@ -146,7 +146,7 @@ fun LockPage(
         if (pairing == com.zimky.coregateUS.core.VersionPairing.Status.MISMATCH) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AnimatedGradientText("APK 与模块 ZIP 版本不一致", cs.error)
+                    AnimatedGradientText(if (s?.moduleVersion?.contains("pro", ignoreCase = true) == true) "你好Pro用户" else "APK 与模块 ZIP 版本不一致", cs.error)
                     Text("APK：${com.zimky.coregateUS.BuildConfig.VERSION_NAME} (${com.zimky.coregateUS.BuildConfig.VERSION_CODE})",
                         color = cs.onSurface, fontSize = 13.sp)
                     Text("模块 ZIP：${s?.moduleVersion?.takeIf { it.isNotBlank() } ?: "版本名未知"} (${s?.moduleVersionCode?.toString() ?: "版本码未知"})",
