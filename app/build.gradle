@@ -16,13 +16,14 @@ android {
         // 不用 tools:overrideLibrary 绕过检查（绕过会失去构建期保护）。
         minSdk 33
         targetSdk 37
-        versionCode 230
-        versionName "2.3.0"
+        versionCode 231
+        versionName "2.3.1"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -30,6 +31,10 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+
+    androidResources {
+        noCompress += ['m4a']
     }
 
     buildFeatures {

@@ -19,8 +19,16 @@
 <!-- AGP 9 起 manifest 的 package 属性已废弃并被忽略，包名统一由 build.gradle 的 namespace 决定。 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- 只对冻结表内的包申请可见性，用于读取应用名与图标。 -->
     <queries>
+        <!-- Browser discovery for contributor web links. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
         <package android:name="com.oplus.logkit" />
         <package android:name="com.oplus.onetrace" />
         <package android:name="com.android.traceur" />

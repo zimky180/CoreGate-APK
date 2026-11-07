@@ -25,6 +25,7 @@ import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 @Composable
 fun MiuixKernelSUTheme(
     appSettings: AppSettings,
+    startupActive: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -51,7 +52,8 @@ fun MiuixKernelSUTheme(
             if (darkTheme) dynamicDarkColorScheme(context).primary
             else dynamicLightColorScheme(context).primary
 
-        else -> null
+        // 非动态模式下，“默认”使用 CoreGate 绿色，避免回退到 Miuix 内置蓝色。
+        else -> Color(0xff43a047)
     } }
 
     val controller = remember(appSettings.colorMode, resolvedKeyColor, darkTheme, miuixPaletteStyle, miuixColorSpec) { ThemeController(
@@ -72,11 +74,11 @@ fun MiuixKernelSUTheme(
     MiuixTheme(
         controller = controller,
         content = {
-            LaunchedEffect(darkTheme) {
+            LaunchedEffect(darkTheme, startupActive) {
                 val window = (context as? Activity)?.window ?: return@LaunchedEffect
                 WindowInsetsControllerCompat(window, window.decorView).apply {
-                    isAppearanceLightStatusBars = !darkTheme
-                    isAppearanceLightNavigationBars = !darkTheme
+                    isAppearanceLightStatusBars = !darkTheme && !startupActive
+                    isAppearanceLightNavigationBars = !darkTheme && !startupActive
                 }
             }
             CompositionLocalProvider(

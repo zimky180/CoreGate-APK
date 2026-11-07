@@ -76,6 +76,8 @@ import com.zimky.coregateUS.page.FreezePage
 import com.zimky.coregateUS.page.LockPage
 import com.zimky.coregateUS.page.PolicyPage
 import com.zimky.coregateUS.page.SettingsPage
+import com.zimky.coregateUS.ui.HomeMusicPlayer
+import com.zimky.coregateUS.ui.StartupIntro
 import com.zimky.coregateUS.ui.ToastHost
 import com.zimky.coregateUS.ui.component.RootGate
 import com.zimky.coregateUS.ui.component.FloatingBottomBar
@@ -105,11 +107,52 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  *   3) 页面只负责显示，轮询统一在 Activity 层做，两条线不打架。
  */
 class MainActivity : ComponentActivity() {
+    private var introIconBounds: androidx.compose.ui.geometry.Rect? = null
+    private var systemIntroComplete by mutableStateOf(false)
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Keep the actual system splash animation, then move its icon to the
+        // measured Compose icon bounds before starting the full-screen particles.
+        systemIntroComplete = savedInstanceState != null
+        splashScreen.setOnExitAnimationListener { splash ->
+            val icon = splash.iconView
+            val scale = runCatching {
+                android.provider.Settings.Global.getFloat(contentResolver,
+                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+            }.getOrDefault(1f).coerceAtLeast(0f)
+            val elapsed = splash.iconAnimationStart?.let {
+                java.time.Duration.between(it, java.time.Instant.now()).toMillis()
+            } ?: 680L
+            val remaining = if (scale == 0f || savedInstanceState != null) 0L
+                else (680L * scale - elapsed).toLong().coerceIn(0L, 1200L)
+            splash.postDelayed({
+                val target = introIconBounds
+                if (scale == 0f || target == null || icon.width == 0 || icon.height == 0) {
+                    systemIntroComplete = true
+                    splash.remove()
+                } else {
+                    val location = IntArray(2)
+                    icon.getLocationOnScreen(location)
+                    icon.animate()
+                        .translationX(target.center.x - location[0] - icon.width / 2f)
+                        .translationY(target.center.y - location[1] - icon.height / 2f)
+                        .scaleX(target.width / icon.width)
+                        .scaleY(target.height / icon.height)
+                        .setDuration((280L * scale).toLong())
+                        .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
+                        .withEndAction {
+                            systemIntroComplete = true
+                            // Let Compose draw its matching icon before detaching the overlay.
+                            splash.postOnAnimation { splash.postOnAnimation { splash.remove() } }
+                        }.start()
+                }
+            }, remaining)
+        }
         setContent {
+            var introVisible by rememberSaveable { mutableStateOf(savedInstanceState == null) }
             var appearance by remember { mutableStateOf(AppSettings.load(this@MainActivity)) }
             val themeLayer = androidx.compose.ui.graphics.rememberGraphicsLayer()
             var oldThemeLayer by remember { mutableStateOf<androidx.compose.ui.graphics.layer.GraphicsLayer?>(null) }
@@ -144,7 +187,7 @@ class MainActivity : ComponentActivity() {
                 if (oldThemeLayer == null) themeLayer.record { this@drawWithContent.drawContent() }
                 if (oldThemeLayer == null) drawLayer(themeLayer) else drawContent()
             }) {
-            MiuixKernelSUTheme(appSettings = appearance) {
+            MiuixKernelSUTheme(appSettings = appearance, startupActive = introVisible) {
                 // 开屏 root 门槛：拿不到 root 就根本进不来（拦截式，不是提醒式）。
                 // 放在主题内部，保证检测页与主界面共用同一套配色，不会闪一次白屏。
                 RootGate { AppRoot() }
@@ -154,6 +197,13 @@ class MainActivity : ComponentActivity() {
             oldThemeLayer?.let { layer ->
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = themeOverlayAlpha }
                     .drawWithContent { drawLayer(layer) })
+            }
+            if (introVisible) {
+                StartupIntro(
+                    started = systemIntroComplete,
+                    onIconBounds = { introIconBounds = it },
+                    onFinished = { introVisible = false }
+                )
             }
             }
         }
@@ -542,12 +592,14 @@ private fun AppRoot() {
                 }
             }
 
+            HomeMusicPlayer()
+
             // 顶部仍显示系统状态栏；界面在其背后滚动，薄雾保留内容层次。
-            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()
+            if (currentTab != 0 || subPage != SubPage.NONE) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
                 .drawBackdrop(backdrop = backdrop, shape = { RectangleShape },
                     effects = { blur(18.dp.toPx(), 18.dp.toPx()) },
-                    onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.42f)) }))
+                    onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.36f)) }))
 
             // 读取失败提示条：只在配置真的读不到时出现。
             //

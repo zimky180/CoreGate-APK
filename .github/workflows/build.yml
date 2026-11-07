@@ -1,117 +1,35 @@
-name: Build CoreGate APK
+name: System particle intro test
 on:
   push:
-    branches: [ main, ci-build ]
+    branches: [ci-build]
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Android SDK
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK
         run: |
-          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
-          [ -x "$SM" ] || SM=$(find "$SDK/cmdline-tools" -name sdkmanager -type f | head -n 1)
-          echo "sdkmanager -> $SM"
-          yes | "$SM" --licenses > /dev/null 2>&1 || true
-          "$SM" "platform-tools" "build-tools;36.0.0" || true
-          "$SM" "platforms;android-37.2" \
-            || "$SM" "platforms;android-37.1" \
-            || "$SM" "platforms;android-37.0"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+          sdkmanager "platform-tools" "build-tools;36.0.0"
+          sdkmanager "platforms;android-37.2" || sdkmanager "platforms;android-37.1" || sdkmanager "platforms;android-37.0"
+      - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '9.3.1'
-          cache-disabled: true
-
-      - name: Build debug and release APKs
-        shell: bash
-        continue-on-error: true
-        env:
-          GH_LOG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build test APK
+        run: gradle assembleRelease --no-daemon --stacktrace --console=plain
+      - name: Prepare test APK
         run: |
-          mkdir -p ci-logs
-          set +e
-          gradle assembleDebug assembleRelease --no-daemon --stacktrace --console=plain > ci-logs/gradle-build.log 2>&1
-          rc=$?
-          echo "gradle exit code = [$rc]"
-          echo "$rc" > ci-logs/exit-code.txt
-          echo "--- log size: $(wc -c < ci-logs/gradle-build.log) bytes ---"
-          tail -n 200 ci-logs/gradle-build.log
-          python3 .github/scripts/ci_extract_errors.py ci-logs/gradle-build.log || echo "extract script failed"
-          exit 0
-
-      - name: Upload gradle log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-build-log
-          path: ci-logs/
-          if-no-files-found: warn
-
-      - name: Fail if gradle failed
-        shell: bash
-        run: |
-          rc=$(cat ci-logs/exit-code.txt 2>/dev/null || echo 99)
-          echo "gradle rc = $rc"
-          if [ "$rc" != "0" ]; then exit 1; fi
-
-
-      - name: Rename APK
-        run: |
-          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          echo "Found APK: $APK"
           mkdir -p out
-          cp "$APK" "out/CoreGate-APK-debug-v2.3.0.apk"
-          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          test -n "$RELEASE_APK"
-          cp "$RELEASE_APK" "out/CoreGate-APK-release-v2.3.0-unsigned.apk"
-          ls -l out
-      - name: Package module
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile, ZIP_DEFLATED
-          with ZipFile('out/CoreGate-v2.3.0.zip', 'w', ZIP_DEFLATED) as z:
-              for f in sorted(Path('module').iterdir()):
-                  if f.is_file():
-                      z.write(f, f.name)
-          PY
-
-      - name: Upload module
-        uses: actions/upload-artifact@v4
+          cp app/build/outputs/apk/release/*-unsigned.apk out/CoreGate-system-particles-test-v2.3.1-unsigned.apk
+      - uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-module-v2.3.0
-          path: out/CoreGate-v2.3.0.zip
-          if-no-files-found: error
-
-      - name: Upload APK
-
-        uses: actions/upload-artifact@v4
-        with:
-          name: CoreGate-APK-debug-v2.3.0
-          path: out/CoreGate-APK-debug-v2.3.0.apk
-          if-no-files-found: error
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: CoreGate-APK-release-v2.3.0-unsigned
-          path: out/CoreGate-APK-release-v2.3.0-unsigned.apk
+          name: CoreGate-system-particles-test-v2.3.1-unsigned
+          path: out/*.apk
           if-no-files-found: error

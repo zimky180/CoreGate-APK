@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +47,9 @@ fun SectionHeading(title: String, summary: String? = null) {
 fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier) {
     val cs = MiuixTheme.colorScheme
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(text = value, color = cs.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        Crossfade(targetState = value, animationSpec = tween(220), label = "summaryValue") { shown ->
+            Text(text = shown, color = cs.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        }
         Text(text = label, color = cs.onSurfaceVariantSummary, fontSize = 12.sp, lineHeight = 18.sp)
     }
 }

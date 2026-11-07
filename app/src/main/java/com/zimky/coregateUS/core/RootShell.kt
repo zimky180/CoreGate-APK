@@ -45,6 +45,11 @@ object RootShell {
         execRaw(buildSuCmd(cmd), cmd, cb)
     }
 
+    /** Read image payloads on the existing serial queue without retaining them in diagnostics. */
+    fun execPrivate(cmd: String, cb: (Int, String, String) -> Unit) {
+        execRaw(buildSuCmd(cmd), "[private image read]", cb, false)
+    }
+
     /** 执行已经拼好的完整命令（不再加 su 前缀）。 */
     fun execRaw(fullCmd: String, cb: ((exit: Int, out: String, err: String) -> Unit)? = null) {
         execRaw(fullCmd, fullCmd, cb)
@@ -53,7 +58,8 @@ object RootShell {
     private fun execRaw(
         fullCmd: String,
         showCmd: String,
-        cb: ((Int, String, String) -> Unit)?
+        cb: ((Int, String, String) -> Unit)?,
+        recordHistory: Boolean = true
     ) {
         queue.execute {
             var exit = -1
@@ -86,7 +92,7 @@ object RootShell {
             val fErr = err.toString()
             val cost = System.currentTimeMillis() - t0
 
-            remember(ShellRecord(showCmd, fExit, cost, fOut, fErr))
+            if (recordHistory) remember(ShellRecord(showCmd, fExit, cost, fOut, fErr))
 
             main.post { cb?.invoke(fExit, fOut, fErr) }
         }
@@ -97,6 +103,11 @@ object RootShell {
             history.addLast(r)
             while (history.size > HISTORY_MAX) history.removeFirst()
         }
+    }
+
+    /** 清空诊断页保留的命令与输出缓存。 */
+    fun clearHistory() {
+        synchronized(history) { history.clear() }
     }
 
     /** 返回执行记录快照（新 → 旧）。 */

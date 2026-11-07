@@ -47,6 +47,7 @@ import com.zimky.coregateUS.core.LogReader
 import com.zimky.coregateUS.core.Paths
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.ConfirmDialog
 import com.zimky.coregateUS.ui.AnimatedGradientText
 import com.zimky.coregateUS.ui.PageHeading
 import com.zimky.coregateUS.ui.SectionHeading
@@ -128,6 +129,8 @@ fun SettingsPage(
     val cs = MiuixTheme.colorScheme
     // 在 @Composable 上下文里取一次，供 NavRow 的普通 onClick lambda 捕获使用
     val ctx = LocalContext.current
+    val musicPrefs = remember(ctx) { ctx.getSharedPreferences("home_music", 0) }
+    var musicAutoplay by remember { mutableStateOf(musicPrefs.getBoolean("autoplay_on_start", true)) }
     val s = snapshot
     val daemonAlive = s?.daemonAlive == true
     // ── 名单编辑缓冲：父级刷新回来时同步，用户改过则不覆盖 ──
@@ -145,17 +148,49 @@ fun SettingsPage(
     //     用户再点旁边的「保存名单」即可落盘。
     // 匹配大小写不敏感，因为 Android 包名虽然全小写，但用户手抄时常带大写。
     var query by remember { mutableStateOf("") }
+    var packagesExpanded by rememberSaveable { mutableStateOf(false) }
 
 
     // ── 日志状态 ──
     var logText by remember { mutableStateOf("") }
     var logFrom by remember { mutableStateOf("") }
     var logBusy by remember { mutableStateOf(false) }
+    var logClearing by remember { mutableStateOf(false) }
+    var logLoaded by remember { mutableStateOf(false) }
+    var logGeneration by remember { mutableStateOf(0) }
+    var confirmClearLogs by remember { mutableStateOf(false) }
 
     // ── 诊断刷新计数，点一次变一次 ──
     var diagTick by remember { mutableStateOf(0) }
     var logsExpanded by rememberSaveable { mutableStateOf(false) }
     var diagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
+
+    if (confirmClearLogs) {
+        ConfirmDialog(
+            title = "清空日志？",
+            message = "清空模块日志、当前页面保留的日志和诊断命令历史。清空后无法恢复，模块之后仍会记录新的运行日志。",
+            confirmText = "确认清空",
+            onCancel = { confirmClearLogs = false },
+            onConfirm = {
+                confirmClearLogs = false
+                logClearing = true
+                ++logGeneration
+                logBusy = false
+                LogReader.clear(sh) { code, _, _ ->
+                    logClearing = false
+                    if (code == 0) {
+                        logText = ""
+                        logFrom = ""
+                        logLoaded = true
+                        diagTick++
+                        Toaster.show("清空成功")
+                    } else {
+                        Toaster.show("日志未全部清空，请检查 Root 授权或文件权限", true)
+                    }
+                }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -200,6 +235,18 @@ fun SettingsPage(
                         else -> appearance.colorMode
                     }
                     setAppearance(appearance.copy(colorMode = mode, keyColor = keyColor))
+                }
+            }
+        }
+
+        SectionHeading("音乐")
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                SwitchRow(title = "打开 App 自动播放音乐", desc = "开启后，下次打开 App 自动随机播放歌单；切换页面持续播放。") {
+                    Switch(checked = musicAutoplay, onCheckedChange = {
+                        musicAutoplay = it
+                        musicPrefs.edit().putBoolean("autoplay_on_start", it).apply()
+                    }, colors = switchColors())
                 }
             }
         }
@@ -313,6 +360,7 @@ fun SettingsPage(
                                 onClick = {
                                     listText = appendPackage(listText, q)
                                     listDirty = true
+                                    packagesExpanded = true
                                     Toaster.show("已加到名单末尾，记得点「保存名单」")
                                 },
                                 colors = ButtonDefaults.textButtonColorsPrimary()
@@ -321,52 +369,62 @@ fun SettingsPage(
                     }
                 }
                 CardDivider()
-                Text(text = "编辑名单", color = cs.onSurface, fontSize = 16.sp)
-                Gap(10.dp)
-                SubText("每行一个包名。命中名单时模块会自动放开全部核心，退出后恢复锁核。")
-                Gap(10.dp)
-                OutlinedTextField(
-                    value = listText,
-                    onValueChange = {
-                        listText = it
-                        listDirty = it != packagesRaw
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 132.dp),
-                    textStyle = TextStyle(
-                        fontSize = 12.5.sp,
-                        lineHeight = 18.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = cs.onSurface
-                    ),
-                    placeholder = { HintText("com.example.game") },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = fieldColors()
+                NavRow(
+                    title = "编辑包名名单",
+                    summary = (if (packagesExpanded) "收起" else "展开") +
+                        " · ${listText.lineSequence().count { it.isNotBlank() }} 个包名" +
+                        if (listDirty) " · 未保存" else "",
+                    onClick = { packagesExpanded = !packagesExpanded }
                 )
-                Gap(8.dp)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val count = listText.lineSequence().count { it.isNotBlank() }
-                    HintText("共 $count 个包名" + if (listDirty) "（有未保存改动）" else "")
-                    Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
-                        TextButton(
-                            text = "保存名单",
-                            onClick = {
-                                save(cfg, listText) { ok, msg ->
-                                    if (ok) {
-                                        listDirty = false
-                                        Toaster.show("名单已保存")
-                                        onRefresh()
-                                    } else {
-                                        Toaster.show("保存失败：$msg", true)
-                                    }
-                                }
+                AnimatedVisibility(visible = packagesExpanded) {
+                    Column {
+                        Gap(10.dp)
+                        SubText("每行一个包名。命中名单时模块会自动放开全部核心，退出后恢复锁核。")
+                        Gap(10.dp)
+                        OutlinedTextField(
+                            value = listText,
+                            onValueChange = {
+                                listText = it
+                                listDirty = it != packagesRaw
                             },
-                            colors = ButtonDefaults.textButtonColorsPrimary()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 132.dp, max = 260.dp),
+                            textStyle = TextStyle(
+                                fontSize = 12.5.sp,
+                                lineHeight = 18.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = cs.onSurface
+                            ),
+                            placeholder = { HintText("com.example.game") },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = fieldColors()
                         )
+                        Gap(8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val count = listText.lineSequence().count { it.isNotBlank() }
+                            HintText("共 $count 个包名" + if (listDirty) "（有未保存改动）" else "")
+                            Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+                                TextButton(
+                                    text = "保存名单",
+                                    onClick = {
+                                        save(cfg, listText) { ok, msg ->
+                                            if (ok) {
+                                                listDirty = false
+                                                Toaster.show("名单已保存")
+                                                onRefresh()
+                                            } else {
+                                                Toaster.show("保存失败：$msg", true)
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.textButtonColorsPrimary()
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -393,10 +451,13 @@ fun SettingsPage(
                             TextButton(
                                 text = if (logBusy) "读取中…" else "读取日志",
                                 onClick = {
-                                    if (logBusy) return@TextButton
+                                    if (logBusy || logClearing) return@TextButton
                                     logBusy = true
+                                    val generation = ++logGeneration
                                     LogReader.tail(sh, 160) { text, from, found ->
+                                        if (generation != logGeneration) return@tail
                                         logBusy = false
+                                        logLoaded = true
                                         if (!found) {
                                             logText = ""
                                             logFrom = ""
@@ -410,16 +471,9 @@ fun SettingsPage(
                                 colors = ButtonDefaults.textButtonColorsPrimary()
                             )
                             TextButton(
-                                text = "清空日志",
+                                text = if (logClearing) "清空中…" else "清空日志",
                                 onClick = {
-                                    LogReader.clear(sh) { code, _, _ ->
-                                        if (code == 0) {
-                                            logText = ""
-                                            Toaster.show("日志已清空")
-                                        } else {
-                                            Toaster.show("清空失败，退出码 $code", true)
-                                        }
-                                    }
+                                    if (!logClearing) confirmClearLogs = true
                                 },
                                 colors = ButtonDefaults.textButtonColorsPrimary()
                             )
@@ -440,7 +494,7 @@ fun SettingsPage(
                                 .padding(10.dp)
                         ) {
                             if (logText.isEmpty()) {
-                                HintText("还没读取日志。点上方「读取日志」拉取最近 160 行。")
+                                HintText(if (logLoaded) "暂无日志" else "还没读取日志。点上方「读取日志」拉取最近 160 行。")
                             } else {
                                 SelectionContainer {
                                     Column(
@@ -602,6 +656,9 @@ fun SettingsPage(
                 HintText("APK 是唯一的操作入口，直接读写模块的 config.json 与 packages.txt，不依赖任何 WebUI。")
             }
         }
+
+        com.zimky.coregateUS.ui.ApkUpdateCard()
+        ContributorsSection()
 
         // ── 卡片六：联系作者 ─────────────────────────────────────────
         // 放在最底部：属于「想看才看」的内容，不占日常视野。

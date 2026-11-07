@@ -9,6 +9,10 @@
 <resources>
 
     <style name="Theme.CoreGate" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowSplashScreenBackground">@android:color/black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/cg_splash_animated</item>
+        <item name="android:windowSplashScreenAnimationDuration">680</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/cg_bg</item>
         <item name="android:colorBackground">@color/cg_bg</item>
         <item name="android:statusBarColor">@color/cg_bg</item>

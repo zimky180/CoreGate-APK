@@ -1,9 +1,10 @@
 package com.zimky.coregateUS.page
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
@@ -29,31 +30,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.zimky.coregateUS.core.ProcessorName
+import com.zimky.coregateUS.ui.ConfirmDialog
 import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.ModuleBridge
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
 import com.zimky.coregateUS.ui.AnimatedGradientText
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.spring
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import com.zimky.coregateUS.ui.PageHeading
+import com.zimky.coregateUS.ui.HomeAvatarAnchor
+import com.zimky.coregateUS.ui.HomeAvatarOverlay
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.zimky.coregateUS.ui.HomeProfileHeader
 import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.SummaryMetric
 import com.zimky.coregateUS.ui.NavRow
@@ -64,7 +57,6 @@ import com.zimky.coregateUS.ui.HairLine
 import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
 import com.zimky.coregateUS.ui.Toaster
-import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
@@ -107,6 +99,8 @@ fun LockPage(
     val cs = MiuixTheme.colorScheme
     val s = snapshot
     val daemonAlive = s?.daemonAlive == true
+    var processorName by remember { mutableStateOf("读取中…") }
+    LaunchedEffect(Unit) { processorName = ProcessorName.load() }
     val total = s?.cores?.size ?: 0
     val onlineCount = s?.onlineCount ?: 0
     val locked = total > 0 && onlineCount > 0 && onlineCount < total
@@ -115,6 +109,7 @@ fun LockPage(
 
     // 正在执行的核操作：null = 空闲。存在时所有方块都不可点，防止并发。
     var busy by remember { mutableStateOf(false) }
+    var busyCoreId by remember { mutableStateOf<Int?>(null) }
     // 待确认的核操作：点了方块先落这里，弹框确认后才真正发命令。
     var pendingCore by remember { mutableStateOf<SysProbe.Core?>(null) }
 
@@ -125,7 +120,10 @@ fun LockPage(
     // 看着像贴在底部的提示条，而不是弹窗。
     // 拆成 Box 之后，Column 只负责滚动内容，弹窗作为兄弟层叠在上面，
     // 用 fillMaxSize 覆盖整屏、Alignment.Center 居中，与滚动位置彻底无关。
-    Box(modifier = Modifier.fillMaxSize()) {
+    val homeScroll = rememberScrollState()
+    // Coordinates are read in the draw pass; do not feed scroll-dependent bounds back into composition.
+    val avatarAnchor = remember { HomeAvatarAnchor() }
+    Box(modifier = Modifier.fillMaxSize().onGloballyPositioned { avatarAnchor.root = it }) {
     Column(
         modifier = Modifier
             // 一级页必须自己铺满整屏：
@@ -135,77 +133,74 @@ fun LockPage(
             // 点击也会漏到别的页去（真机反馈的「按钮点不着」）。
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(homeScroll)
             .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
 
-        PageHeading("核心门控", "运行概览与核心控制")
+        HomeProfileHeader(onAvatarPosition = { avatarAnchor.avatar = it })
 
-        val moduleMismatch = s?.svcState == true && s.moduleVersionCode != null &&
-            (s.moduleVersionCode != com.zimky.coregateUS.BuildConfig.VERSION_CODE ||
-                s.moduleVersion != com.zimky.coregateUS.BuildConfig.VERSION_NAME.removePrefix("v"))
-        if (moduleMismatch) {
+        val pairing = com.zimky.coregateUS.core.VersionPairing.evaluate(
+            s?.svcState, s?.moduleVersion, s?.moduleVersionCode
+        )
+        if (pairing == com.zimky.coregateUS.core.VersionPairing.Status.MISMATCH) {
             Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AnimatedGradientText("APK 与模块 ZIP 版本不一致", cs.error)
+                    Text("APK：${com.zimky.coregateUS.BuildConfig.VERSION_NAME} (${com.zimky.coregateUS.BuildConfig.VERSION_CODE})",
+                        color = cs.onSurface, fontSize = 13.sp)
+                    Text("模块 ZIP：${s?.moduleVersion?.takeIf { it.isNotBlank() } ?: "版本名未知"} (${s?.moduleVersionCode?.toString() ?: "版本码未知"})",
+                        color = cs.onSurface, fontSize = 13.sp)
+                    Text("请安装同一版本的 APK 和模块 ZIP；刷入模块后重启设备。",
+                        color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
+                }
+            }
+        } else if (s?.svcState == true && pairing == com.zimky.coregateUS.core.VersionPairing.Status.UNKNOWN) {
+            Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    AnimatedGradientText("请更新配套模块", cs.error)
-                    Gap(6.dp)
-                    Text("APK ${com.zimky.coregateUS.BuildConfig.VERSION_NAME} · 模块 ${s?.moduleVersion}，请刷入与 APK 配套的模块 ZIP 并重启。",
+                    Text("模块 ZIP 版本尚未读全，暂无法确认与 APK 是否配套。",
                         color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
                 }
             }
         }
 
-        // ── 卡片一：锁核运行状态 ─────────────────────────────────────
+        // 状态只按实际快照呈现，避免推断具体策略触发原因。
+        val stateColor by animateColorAsState(
+            when { s == null -> cs.onSurfaceVariantSummary; !daemonAlive -> cs.error; else -> cs.primary },
+            tween(300), label = "homeStateColor")
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-                Text(text = "运行状态", color = cs.onSurfaceVariantSummary, fontSize = 13.sp)
-                Gap(12.dp)
-                when {
-                    s == null -> {
-                        StateBadge("读取中", cs.onSurfaceVariantSummary)
-                        Gap(10.dp)
-                        Text(text = "正在读取模块状态", color = cs.onSurface, fontSize = 22.sp)
-                    }
-                    !daemonAlive -> {
-                        StateBadge("未运行", cs.error)
-                        Gap(10.dp)
-                        Text(text = "守护进程未启动", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                        Gap(6.dp)
-                        Text(
-                            text = "模块可能已被禁用，或安装后尚未重启。可尝试重新刷入模块并重启设备。",
-                            color = cs.onSurfaceVariantSummary,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp
-                        )
-                    }
-                    locked -> {
-                        BreathingBadge("锁核中", cs.primary)
-                        Gap(10.dp)
-                        Text(text = "已封锁 ${total - onlineCount} 个核心", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                        Gap(6.dp)
-                        Text(
-                            text = "当前前台应用未被识别为游戏/录屏，空闲大核已离线以节省功耗。",
-                            color = cs.onSurfaceVariantSummary,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp
-                        )
-                    }
-                    else -> {
-                        StateBadge("全核在线", Semantic.ACC)
-                        Gap(10.dp)
-                        Text(text = "全部核心在线", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                        Gap(6.dp)
-                        Text(
-                            text = "当前处于游戏或录屏/相机场景，或模块已禁用锁核，性能已全部放开。",
-                            color = cs.onSurfaceVariantSummary,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp
-                        )
-                    }
+            Column(modifier = Modifier
+                .background(Brush.verticalGradient(listOf(stateColor.copy(alpha = 0.07f), Color.Transparent)))
+                .padding(horizontal = 20.dp, vertical = 22.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("运行概览", color = cs.onSurfaceVariantSummary, fontSize = 13.sp)
+                    StateBadge(when {
+                        s == null -> "读取中"
+                        !daemonAlive -> "未运行"
+                        locked -> "核心已离线"
+                        total == 0 -> "待确认"
+                        else -> "全核在线"
+                    }, stateColor)
                 }
-
+                Gap(14.dp)
+                Text(text = when {
+                    s == null -> "正在读取状态"
+                    !daemonAlive -> "守护进程未启动"
+                    total == 0 -> "等待核心信息"
+                    locked -> "${total - onlineCount} 个核心已离线"
+                    else -> "全部核心在线"
+                }, color = cs.onSurface, fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                    lineHeight = 34.sp)
+                Gap(8.dp)
+                Text(text = when {
+                    s == null -> "模块状态与核心信息将在读取后显示。"
+                    !daemonAlive -> "请确认模块已启用；安装或更新后需要重启设备。"
+                    total == 0 -> "守护进程运行中，暂未读到核心状态。"
+                    locked -> "守护进程运行中，当前在线 $onlineCount 个核心。"
+                    else -> "守护进程运行中，核心状态以设备实况为准。"
+                }, color = cs.onSurfaceVariantSummary, fontSize = 12.sp, lineHeight = 19.sp)
                 Gap(18.dp)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     SummaryMetric("在线核心", if (s == null) "—" else "$onlineCount / $total", Modifier.weight(1f))
@@ -217,13 +212,12 @@ fun LockPage(
                 Gap(10.dp)
 
                 val pidText = if (s != null && s.daemonPid > 0) s.daemonPid.toString() else "—"
-                val pkgText = s?.statePkg?.takeIf { it.isNotBlank() } ?: "—"
-                Text(
-                    text = "守护进程：${if (daemonAlive) "运行中" else "未运行"} · PID $pidText · 前台 $pkgText",
-                    color = cs.onSurfaceVariantSummary,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
-                )
+                Text(text = processorName, color = cs.onSurface, fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium, lineHeight = 20.sp)
+                Gap(3.dp)
+                Text(text = if (s == null) "守护进程状态读取中"
+                    else "守护进程${if (daemonAlive) "运行中" else "未运行"} · PID $pidText",
+                    color = cs.onSurfaceVariantSummary, fontSize = 11.5.sp, lineHeight = 17.sp)
             }
         }
 
@@ -251,7 +245,7 @@ fun LockPage(
                 val cores = s?.cores ?: emptyList()
                 if (cores.isEmpty()) {
                     Text(
-                        text = "暂时读不到核心信息，下拉或稍候自动刷新。",
+                        text = "暂时读不到核心信息，请稍候自动刷新。",
                         color = cs.onSurfaceVariantSummary,
                         fontSize = 12.sp
                     )
@@ -282,6 +276,7 @@ fun LockPage(
                                     freqText = if (core.online) SysProbe.fmtMhz(core.curFreq) else "离线",
                                     color = col,
                                     modifier = Modifier.weight(1f),
+                                    processing = busyCoreId == core.id,
                                     onClick = if (clickable) {
                                         // 点方块只弹确认框，不直接写。封锁/解封会真的把核下线上线，
                                         // 误触会让手机瞬间卡顿，所以必须二次确认。
@@ -375,6 +370,9 @@ fun LockPage(
     // ── 核心封锁/解封二次确认（整屏浮层，居中弹出） ────────────────
     // 与滚动 Column 同级、排在它后面，因此天然覆盖在内容之上，
     // 且不参与 verticalScroll 的测量，滚动到哪儿都居中。
+
+    HomeAvatarOverlay(homeScroll, avatarAnchor)
+
     pendingCore?.let { core ->
         CoreConfirmDialog(
             core = core,
@@ -382,6 +380,7 @@ fun LockPage(
             onConfirm = {
                 pendingCore = null
                 busy = true
+                busyCoreId = core.id
                 val target = core
                 val action = if (target.online) {
                     { cb: (Boolean, String) -> Unit -> ModuleBridge.coreOff(sh, target.id, cb) }
@@ -390,6 +389,7 @@ fun LockPage(
                 }
                 action { ok, msg ->
                     busy = false
+                    busyCoreId = null
                     if (ok) {
                         Toaster.show(
                             if (target.online) "已封锁 CPU ${target.id}，切到游戏时会自动恢复全部核心。"
@@ -408,36 +408,18 @@ fun LockPage(
     }
 }
 
-/** 状态徽标：静态，颜色由调用方按语义给出。文字统一白色，与 KernelSU 徽标一致。 */
+/** 柔和状态胶囊，文字保持稳定可读。 */
 @Composable
 private fun StateBadge(text: String, color: Color) {
-    Badge(containerColor = color, contentColor = Color.White) {
-        Text(text = text, fontSize = 12.sp, color = Color.White)
-    }
-}
-
-/**
- * 呼吸徽标：锁核进行中时用轻微明暗变化提示「正在工作」。
- *
- * Miuix 的 Badge 没有内置动画参数，这里在它外层套 [Modifier.alpha] 实现，
- * 取值范围 0.55~1.0，周期 1.4 秒，与旧版 StatusPill(breathing = true) 观感一致。
- */
-@Composable
-private fun BreathingBadge(text: String, color: Color) {
-    val transition = rememberInfiniteTransition(label = "badgeBreath")
-    val alpha by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 700),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "badgeAlpha"
-    )
-    Box(modifier = Modifier.alpha(alpha)) {
-        Badge(containerColor = color, contentColor = Color.White) {
-            Text(text = text, fontSize = 12.sp, color = Color.White)
-        }
+    val cs = MiuixTheme.colorScheme
+    Row(Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50.dp))
+        .background(color.copy(alpha = 0.10f))
+        .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(5.dp).clip(CircleShape).background(color))
+        Text(text = text, fontSize = 11.sp,
+            color = androidx.compose.ui.graphics.lerp(cs.onSurface, color, 0.35f))
     }
 }
 
@@ -467,83 +449,16 @@ private fun CoreConfirmDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    val cs = MiuixTheme.colorScheme
     val locking = core.online
-    val transition = remember { MutableTransitionState(false) }
-    val scope = rememberCoroutineScope()
-    var closing by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { transition.targetState = true }
-    fun close(action: () -> Unit) {
-        if (closing) return
-        closing = true
-        transition.targetState = false
-        scope.launch { delay(220); action() }
-    }
-    Dialog(onDismissRequest = { close(onCancel) },
-        properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        BackHandler { close(onCancel) }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null) { close(onCancel) },
-            contentAlignment = Alignment.Center
-        ) {
-            AnimatedVisibility(visibleState = transition,
-                enter = fadeIn(tween(200)) + scaleIn(spring(dampingRatio = 0.88f, stiffness = 420f), initialScale = 0.90f),
-                exit = fadeOut(tween(180)) + scaleOut(tween(200), targetScale = 0.96f)) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp)
-                        .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {},
-                    cornerRadius = 28.dp
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
-                        AnimatedGradientText(
-                            text = if (locking) "封锁 CPU ${core.id}？" else "解封 CPU ${core.id}？",
-                            color = cs.primary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = if (locking) {
-                                "封锁后这个核心会下线，功耗下降，但这个核心的算力暂时用不到。" +
-                                    "进入游戏或录屏 / 相机时模块会自动恢复全部核心，重启也会还原。"
-                            } else {
-                                "解封后这个核心会重新上线，算力恢复，功耗也会跟着上去。"
-                            },
-                            color = cs.onSurfaceVariantSummary,
-                            fontSize = 12.5.sp,
-                            lineHeight = 19.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "当前频率 ${SysProbe.fmtMhz(core.curFreq)}",
-                            color = cs.onSurface,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(18.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                text = "取消",
-                                onClick = { close(onCancel) },
-                                colors = ButtonDefaults.textButtonColors(
-                                    textColor = cs.onSurfaceVariantSummary
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            TextButton(
-                                text = if (locking) "确认封锁" else "确认解封",
-                                onClick = { close(onConfirm) },
-                                colors = ButtonDefaults.textButtonColors(textColor = cs.primary)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
+    ConfirmDialog(
+        title = if (locking) "封锁 CPU ${core.id}？" else "解封 CPU ${core.id}？",
+        message = (if (locking) {
+            "封锁后这个核心会下线，功耗下降，可用算力也会减少。模块会根据你启用的游戏、录屏和相机策略决定是否自动恢复。"
+        } else {
+            "解封后这个核心会重新上线，算力恢复，功耗也会跟着上去。"
+        }) + "\n\n当前频率 ${SysProbe.fmtMhz(core.curFreq)}",
+        confirmText = if (locking) "确认封锁" else "确认解封",
+        onCancel = onCancel,
+        onConfirm = onConfirm
+    )
 }

@@ -60,11 +60,13 @@ data class CoreConfig(
     var capGpuPwrLevel: Int = -1,
     /** 录屏 / 相机自动恢复 */
     var captureBoost: Boolean = false,
-    /** 温度策略：CPU / SoC 传感器，默认关闭。 */
+    /** 温度策略：电池温度，默认关闭。 */
     var temperatureEnabled: Boolean = false,
-    /** lock / unlock，超过阈值时覆盖普通场景策略。 */
+    /** lock 为日常额外封锁（游戏跳过）；unlock 为高温恢复全部核心。 */
     var temperatureMode: String = "lock",
     var temperatureThreshold: Int = 40,
+    /** 高温时在日常封锁之外额外封锁的核心；空值表示未选择。 */
+    var temperatureLockCores: String = "",
     /** 冻结：日志上报（六组，默认全关，由用户自己开） */
     var freezeGrpLog: Boolean = false,
     /** 冻结：媒体扫描 */
@@ -112,6 +114,7 @@ data class CoreConfig(
         put("temperature_enabled", temperatureEnabled)
         put("temperature_mode", if (temperatureMode == "unlock") "unlock" else "lock")
         put("temperature_threshold", clampTemperature(temperatureThreshold))
+        put("temperature_lock_cores", normalizeTemperatureCores(temperatureLockCores))
         // 冻结六组：键名必须与 service.sh 的 freeze_$1 拼出来的完全一致
         put("freeze_grp_log", freezeGrpLog)
         put("freeze_grp_media", freezeGrpMedia)
@@ -151,11 +154,14 @@ data class CoreConfig(
         private val MANAGED_KEYS = setOf(
             "enabled", "lock_cores", "disable_core_ctl", "no_lock_charging",
             "poll_interval", "limit_freq", "capture_boost",
-            "temperature_enabled", "temperature_mode", "temperature_threshold",
+            "temperature_enabled", "temperature_mode", "temperature_threshold", "temperature_lock_cores",
             "cap_little_mhz", "cap_big_mhz", "cap_gpu_mhz", "cap_gpu_pwrlevel",
             "freeze_grp_log", "freeze_grp_media", "freeze_grp_cloud",
             "freeze_grp_diag", "freeze_grp_ad", "freeze_grp_self"
         )
+
+        fun normalizeTemperatureCores(raw: String): String = raw.split(Regex("[,，、\\s]+"))
+            .mapNotNull { it.toIntOrNull() }.filter { it > 0 }.distinct().sorted().joinToString(",")
 
         fun clampTemperature(v: Int): Int = v.coerceIn(35, 60)
 
@@ -188,6 +194,7 @@ data class CoreConfig(
                 c.temperatureEnabled = o.optBoolean("temperature_enabled", false)
                 c.temperatureMode = if (o.optString("temperature_mode", "lock") == "unlock") "unlock" else "lock"
                 c.temperatureThreshold = clampTemperature(o.optInt("temperature_threshold", 40))
+                c.temperatureLockCores = normalizeTemperatureCores(o.optString("temperature_lock_cores", ""))
                 // 冻结六组，默认全关；用户自己开过才为 true
                 c.freezeGrpLog = o.optBoolean("freeze_grp_log", false)
                 c.freezeGrpMedia = o.optBoolean("freeze_grp_media", false)

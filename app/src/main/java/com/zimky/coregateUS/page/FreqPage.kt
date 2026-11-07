@@ -1,24 +1,38 @@
 package com.zimky.coregateUS.page
 
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
@@ -26,7 +40,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
@@ -455,10 +468,14 @@ private fun FreqSliderRow(
         }
         Gap(6.dp)
         MiuixSlider(
+            name = name,
             index = idx,
             maxIndex = steps.size - 1,
             onIndexChange = { idx = it },
-            onCommit = { onCommit(steps.getOrElse(indexState.intValue) { fallbackMhz }) }
+            onCommit = { selected ->
+                idx = selected
+                onCommit(steps.getOrElse(selected) { fallbackMhz })
+            }
         )
         Gap(2.dp)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -469,95 +486,113 @@ private fun FreqSliderRow(
     }
 }
 
-/**
- * 自绘滑杆。
- *
- * 项目里没有现成的 Slider 组件，Material3 的 Slider 又与 Miuix 的视觉语言不合，
- * 因此手写一个最小可用版本：圆角轨道 + 实心进度 + 白色圆钮，
- * 配色全部走 [MiuixTheme.colorScheme]，与其余卡片一致。
- *
- * 交互用 detectHorizontalDragGestures + detectTapGestures 组合：
- * 点一下跳到该位置，按住拖动连续更新，松手回调 [onCommit]。
- */
+/** 连续跟手绘制，数值映射真实档位；松手吸附并只提交一次。 */
 @Composable
 private fun MiuixSlider(
+    name: String,
     index: Int,
     maxIndex: Int,
     onIndexChange: (Int) -> Unit,
-    onCommit: () -> Unit
+    onCommit: (Int) -> Unit
 ) {
     val cs = MiuixTheme.colorScheme
-    val trackH = 6.dp
-    val knobR = 9.dp
     var widthPx by remember { mutableIntStateOf(0) }
-
-    val fraction = if (maxIndex <= 0) 0f else index.toFloat() / maxIndex.toFloat()
-
-    // 拖动回调里若直接读 index，会拿到 pointerInput 建立那一刻的旧值，
-    // 快速拖动时 pick 的「没变化就不回调」判断就会失准、漏掉末段位移。
-    // 用 rememberUpdatedState 保证回调里始终读到最新 index。
+    var dragging by remember { mutableStateOf(false) }
+    var startIndex by remember { mutableIntStateOf(index) }
+    var position by remember(maxIndex) {
+        mutableFloatStateOf(if (maxIndex > 0) index.toFloat() / maxIndex else 0f)
+    }
     val latestIndex by rememberUpdatedState(index)
     val latestChange by rememberUpdatedState(onIndexChange)
     val latestCommit by rememberUpdatedState(onCommit)
+    val knobRadius = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.toPx() }
+
+    LaunchedEffect(index, maxIndex) {
+        if (!dragging) position = if (maxIndex > 0) index.toFloat() / maxIndex else 0f
+    }
+    val displayed = animateFloatAsState(
+        targetValue = position,
+        animationSpec = tween(if (dragging) 0 else 120),
+        label = "freqSliderPosition"
+    )
 
     fun pick(x: Float) {
-        if (maxIndex <= 0 || widthPx <= 0) return
-        val f = (x / widthPx).coerceIn(0f, 1f)
-        val i = Math.round(f * maxIndex)
-        if (i != latestIndex) latestChange(i)
+        val travel = widthPx - knobRadius * 2f
+        if (maxIndex <= 0 || travel <= 0f) return
+        position = ((x - knobRadius) / travel).coerceIn(0f, 1f)
+        val selected = (position * maxIndex).roundToInt()
+        if (selected != latestIndex) latestChange(selected)
     }
 
-    Box(
+    fun finish() {
+        if (maxIndex <= 0) return
+        val selected = (position * maxIndex).roundToInt().coerceIn(0, maxIndex)
+        position = selected.toFloat() / maxIndex
+        dragging = false
+        latestCommit(selected)
+    }
+
+    Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(48.dp)
             .onSizeChanged { widthPx = it.width }
-            .pointerInput(maxIndex, widthPx) {
-                detectTapGestures { offset ->
-                    pick(offset.x)
-                    latestCommit()
+            .semantics {
+                contentDescription = "$name 频率档位"
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    index.toFloat(), 0f..maxIndex.coerceAtLeast(0).toFloat(),
+                    (maxIndex - 1).coerceAtLeast(0)
+                )
+                setProgress { requested ->
+                    if (maxIndex <= 0 || !requested.isFinite()) false
+                    else {
+                        val selected = requested.roundToInt().coerceIn(0, maxIndex)
+                        if (selected != latestIndex) {
+                            latestChange(selected)
+                            latestCommit(selected)
+                        }
+                        true
+                    }
                 }
             }
-            .pointerInput(maxIndex, widthPx) {
+            .pointerInput(maxIndex, widthPx, knobRadius) {
+                detectTapGestures { offset ->
+                    if (maxIndex > 0) {
+                        pick(offset.x)
+                        finish()
+                    }
+                }
+            }
+            .pointerInput(maxIndex, widthPx, knobRadius) {
                 detectHorizontalDragGestures(
-                    onDragEnd = { latestCommit() },
-                    onDragCancel = {}
+                    onDragStart = { offset ->
+                        startIndex = latestIndex
+                        dragging = true
+                        pick(offset.x)
+                    },
+                    onDragEnd = { finish() },
+                    onDragCancel = {
+                        position = if (maxIndex > 0) startIndex.toFloat() / maxIndex else 0f
+                        dragging = false
+                        latestChange(startIndex)
+                    }
                 ) { change, _ ->
                     change.consume()
                     pick(change.position.x)
                 }
-            },
-        contentAlignment = Alignment.CenterStart
+            }
     ) {
-        // 轨道底
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(trackH)
-                .clip(RoundedCornerShape(trackH / 2))
-                .background(cs.surfaceContainerHigh)
-        )
-        // 已选进度
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(fraction)
-                .height(trackH)
-                .clip(RoundedCornerShape(trackH / 2))
-                .background(cs.primary)
-        )
-        // 圆钮：用 offset 定位，注意左右各留半个钮宽，避免贴到轨道外侧
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val totalW = maxWidth
-            val knobOffset = (totalW - knobR * 2) * fraction
-            Box(
-                modifier = Modifier
-                    .offset(x = knobOffset)
-                    .size(knobR * 2)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .border(width = 2.dp, color = cs.primary, shape = CircleShape)
-            )
+        val start = Offset(knobRadius, center.y)
+        val end = Offset((size.width - knobRadius).coerceAtLeast(knobRadius), center.y)
+        val fraction = if (dragging) position else displayed.value
+        val thumb = Offset(start.x + (end.x - start.x) * fraction, center.y)
+        drawLine(cs.surfaceContainerHigh, start, end, 6.dp.toPx(), StrokeCap.Round)
+        if (thumb.x > start.x) {
+            drawLine(cs.primary, start, thumb, 6.dp.toPx(), StrokeCap.Round)
         }
+        drawCircle(cs.primary.copy(alpha = 0.12f), 14.dp.toPx(), thumb)
+        drawCircle(cs.primary, knobRadius, thumb)
+        drawCircle(Color.White, 6.dp.toPx(), thumb)
     }
 }
 
@@ -583,32 +618,60 @@ private fun StepperRow(
             Gap(2.dp)
             HintText(hint)
         }
-        StepButton("－", enabled = canMinus, onClick = onMinus)
-        Box(
-            modifier = Modifier.width(52.dp),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MiuixTheme.colorScheme.surfaceContainerHigh),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "$value", color = MiuixTheme.colorScheme.onSurface, fontSize = 15.sp)
+            StepButton(plus = false, enabled = canMinus, onClick = onMinus)
+            Box(
+                modifier = Modifier.width(40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "$value", color = MiuixTheme.colorScheme.onSurface, fontSize = 15.sp)
+            }
+            StepButton(plus = true, enabled = canPlus, onClick = onPlus)
         }
-        StepButton("＋", enabled = canPlus, onClick = onPlus)
     }
 }
 
-/** 步进器按钮：圆形描边，禁用态整体降透明度。 */
+/** 一体式步进器两端的按钮；线条图标避免字形和基线不一致。 */
 @Composable
-private fun StepButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+private fun StepButton(plus: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val cs = MiuixTheme.colorScheme
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale = animateFloatAsState(
+        targetValue = if (pressed) 0.9f else 1f,
+        animationSpec = tween(120), label = "freqStepPress"
+    )
     Box(
         modifier = Modifier
-            .size(32.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .clip(CircleShape)
-            .background(cs.surfaceContainerHigh)
-            .border(width = 1.dp, color = cs.outline, shape = CircleShape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (pressed) cs.primary.copy(alpha = 0.1f) else Color.Transparent)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick
+            )
+            .semantics { contentDescription = if (plus) "增加 GPU 功耗档" else "减少 GPU 功耗档" },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = cs.onSurface, fontSize = 14.sp)
+        Canvas(Modifier.size(16.dp).graphicsLayer {
+            scaleX = scale.value
+            scaleY = scale.value
+            alpha = if (enabled) 1f else 0.3f
+        }) {
+            val color = cs.primary
+            val inset = 2.dp.toPx()
+            val stroke = 2.dp.toPx()
+            drawLine(color, Offset(inset, center.y), Offset(size.width - inset, center.y), stroke, StrokeCap.Round)
+            if (plus) drawLine(color, Offset(center.x, inset), Offset(center.x, size.height - inset), stroke, StrokeCap.Round)
+        }
     }
 }
 

@@ -243,19 +243,21 @@ fun FreezePage(
                     fontSize = 11.5.sp,
                     lineHeight = 16.sp
                 )
-                // 记录与真实状态不一致时，必须显式告警 —— 这是「引擎没生效」的证据
+                // 记录与本次系统读取结果不一致时显式告警；差异本身不能确定原因。
                 if (!loading && snap.staleList.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(cs.primary.copy(alpha = 0.12f))
+                            .background(cs.error.copy(alpha = 0.12f))
                             .padding(horizontal = 10.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = "有 ${snap.staleList.size} 项记录了但未生效，守护进程可能未运行或权限被拒。",
-                            color = cs.primary,
+                            text = "有 ${snap.staleList.size} 项有冻结记录，但本次未检测到系统冻结状态。\n" +
+                                snap.staleList.joinToString("\n") { pkg -> "${labels[pkg] ?: pkg}（$pkg）" } +
+                                "\n请重新读取确认；仅凭记录差异无法判断是状态被恢复、执行失败还是读取遗漏。",
+                            color = cs.error,
                             fontSize = 11.5.sp,
                             lineHeight = 16.sp
                         )

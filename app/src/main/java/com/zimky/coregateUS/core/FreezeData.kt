@@ -147,7 +147,7 @@ object FreezeData {
         val effectiveCount: Int
             get() = applied.keys.count { actual.containsKey(it) }
 
-        /** 本模块记录了、但系统里没体现出来 —— 说明引擎没生效，必须在界面上暴露 */
+        /** 本模块有记录、但本次系统读取未体现的包；需显示差异，不能据此确定失败原因。 */
         val staleList: List<String>
             get() = applied.keys.filterNot { actual.containsKey(it) }
 

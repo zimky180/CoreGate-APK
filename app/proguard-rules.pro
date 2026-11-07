@@ -1,2 +1,4 @@
-# 本工程 minifyEnabled = false，这份规则目前不生效。
-# 保留它是为了万一以后要开混淆时不用重新想。
+# Release uses R8; Android manifest components are preserved by AGP defaults.
+# Preserve source/line metadata for retrace using the published CI mapping artifact.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

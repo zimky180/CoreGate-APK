@@ -35,7 +35,7 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
 
-/** 温度覆盖普通场景；配置由模块执行，页面仅保存和读取状态。 */
+/** 电池温度策略；高温额外锁核跳过游戏，配置交由模块执行。 */
 @Composable
 internal fun TemperaturePolicyCard(
     cfg: CoreConfig,
@@ -48,6 +48,9 @@ internal fun TemperaturePolicyCard(
     var thresholdText by remember { mutableStateOf(cfg.temperatureThreshold.toString()) }
     var focused by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var extraDraft by remember(cfg.temperatureLockCores) {
+        mutableStateOf(CoreConfig.normalizeTemperatureCores(cfg.temperatureLockCores).split(',').mapNotNull { it.toIntOrNull() }.toSet())
+    }
     LaunchedEffect(cfg.temperatureThreshold, focused) {
         if (!focused) thresholdText = cfg.temperatureThreshold.toString()
     }
@@ -71,6 +74,7 @@ internal fun TemperaturePolicyCard(
     val stamp = parts.getOrNull(4)?.toLongOrNull() ?: 0L
     val age = System.currentTimeMillis() / 1000 - stamp
     val fresh = snapshot?.daemonAlive == true && stamp > 0 && age in 0..(cfg.pollInterval + 60).toLong()
+    val sourceMatches = parts.getOrNull(5) == "battery"
     val matches = parts.getOrNull(2) == cfg.temperatureMode &&
         parts.getOrNull(3)?.toIntOrNull() == cfg.temperatureThreshold
     val status = when {
@@ -78,18 +82,22 @@ internal fun TemperaturePolicyCard(
         !cfg.enabled -> "模块已停用"
         snapshot?.daemonAlive != true -> "等待模块运行"
         !fresh -> "等待模块更新"
-        !matches -> "等待策略同步"
+        !sourceMatches -> "请更新配套模块"
+        !matches || parts.getOrNull(6) != cfg.temperatureLockCores -> "等待策略同步"
+        parts[0] == "game_skipped" -> "游戏中，跳过高温锁核"
+        parts[0] == "scene_skipped" -> "自动恢复中，暂停额外锁核"
+        parts[0] == "no_extra" -> "尚未选择额外核心"
         parts[0] == "active" -> "已触发"
         parts[0] == "watching" -> "监测中"
         parts[0] == "unavailable" -> "传感器不可用"
         else -> "等待模块执行"
     }
-    val temp = if (fresh && cfg.temperatureEnabled) parts.getOrNull(1)?.toIntOrNull() else null
+    val temp = if (fresh && sourceMatches && cfg.temperatureEnabled) parts.getOrNull(1)?.toIntOrNull() else null
     val surface by rememberUpdatedState(cs.surfaceContainer)
     val backdrop = rememberLayerBackdrop { drawRect(surface) }
     val available = cfg.loaded && !busy
 
-    SectionHeading("温度策略", "按 CPU / SoC 温度调整核心")
+    SectionHeading("温度策略", "按电池温度调整核心")
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SwitchRow(
@@ -112,7 +120,7 @@ internal fun TemperaturePolicyCard(
                 Column {
                     Text(if (temp != null) String.format(Locale.ROOT, "%.1f ℃", temp / 1000.0) else "— ℃",
                         color = cs.primary, fontSize = 30.sp)
-                    Text("CPU / SoC 最高温度", color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
+                    Text("电池温度", color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
                 }
                 Badge(containerColor = cs.primary.copy(alpha = 0.12f), contentColor = cs.primary) {
                     AnimatedGradientText(status, cs.primary)
@@ -142,7 +150,32 @@ internal fun TemperaturePolicyCard(
             }
             SubText(if (cfg.temperatureMode == "unlock")
                 "达到阈值后恢复全部核心并撤销 CoreGate 限频；这项选择不保证降低温度。"
-                else "达到阈值后封锁已配置的核心，并按日常限频设置执行。")
+                else "达到阈值后，在日常封锁之外额外封锁下方选中的核心；降温后仅撤销额外封锁。名单内游戏运行时跳过，避免高温打断游戏性能。")
+            HintText("使用 Android 电池温度口径，与 CPU / SoC 热点温度不同；不同工具的刷新时间可能造成少量差异。")
+            if (cfg.temperatureMode == "lock") {
+                Text("高温额外锁核", color = cs.onSurface, fontSize = 14.sp)
+                SubText("日常封锁：${if (cfg.lockCores == "auto") "自动选择或手动核心名单" else cfg.lockCores}。以下选择独立保存；重复选择已封锁的核心不会增加封锁数量。CPU0 始终保留。")
+                val cores = snapshot?.cores.orEmpty().sortedBy { it.id }.filter { it.id > 0 }
+                if (cores.isEmpty()) HintText("等待读取核心列表后可自定义。")
+                cores.chunked(4).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { core ->
+                            val selected = core.id in extraDraft
+                            TextButton(
+                                text = "CPU${core.id}${if (selected) " ✓" else ""}",
+                                enabled = available,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.textButtonColors(textColor = if (selected) cs.primary else cs.onSurfaceVariantSummary),
+                                onClick = { extraDraft = if (selected) extraDraft - core.id else extraDraft + core.id }
+                            )
+                        }
+                    }
+                }
+                SubText("已保存的额外核心：${cfg.temperatureLockCores.ifBlank { "未选择（高温时不会额外锁核）" }}")
+                TextButton(text = "保存额外核心", enabled = available && extraDraft.sorted().joinToString(",") != cfg.temperatureLockCores,
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = { persist(cfg.copy(temperatureLockCores = extraDraft.sorted().joinToString(","))) })
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = thresholdText,
@@ -166,7 +199,10 @@ internal fun TemperaturePolicyCard(
                     onClick = { commitThreshold() })
             }
             HintText("35～60℃，默认 40℃。降至阈值以下 3℃时退出温度策略，按轮询间隔检测。")
-            HintText("温度动作优先于游戏、录屏、充电和息屏策略；总开关与安全模式优先。读取不到有效温度时恢复日常策略，系统自身温控继续生效。")
+            HintText(if (cfg.temperatureMode == "lock")
+                "高温额外锁核仅在日常锁核场景执行，游戏、已开启的录屏/相机恢复及充电恢复优先。游戏须加入游戏名单且被识别；前台识别失败时无法保证跳过。未选额外核心时不新增封锁。"
+                else "高温解封恢复全部核心并撤销限频；总开关与安全模式优先。")
+            HintText("读取不到有效电池温度时撤销温度策略；系统自身温控继续生效。配置由守护进程执行，关闭 App 后仍生效。")
         }
     }
 }

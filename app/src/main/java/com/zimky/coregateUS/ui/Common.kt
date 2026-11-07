@@ -1,5 +1,14 @@
 package com.zimky.coregateUS.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -88,19 +97,28 @@ fun CoreCell(
     color: Color,
     modifier: Modifier = Modifier,
     /** 非 null 时整块可点：首页用它实现「点一下封禁 / 再点一下解冻」。 */
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    processing: Boolean = false
 ) {
     val cs = MiuixTheme.colorScheme
-    val cellBg = if (online) color.copy(alpha = 0.16f) else cs.surfaceContainerHigh
-    val cellBorder = if (online) color.copy(alpha = 0.45f) else cs.outline
-    // interactionSource 提到外面无条件创建：
-    //   原来写在 `if (onClick != null)` 分支内部，属于「条件调用 remember」，
-    //   onClick 一旦从 null 变成非 null，组合槽位数量就变了，会触发崩溃。
-    //   这个 cell 只在首页用、onClick 恒为 null（点击由父层统一处理），
-    //   所以此前没炸，但写法本身是错的，顺手改掉。
+    val cellBg by animateColorAsState(
+        if (online) androidx.compose.ui.graphics.lerp(cs.surfaceContainerHigh, color, 0.09f)
+        else cs.surfaceContainerHigh, tween(280), label = "coreBackground")
+    val cellBorder by animateColorAsState(
+        if (processing) cs.primary.copy(alpha = 0.65f)
+        else if (online) color.copy(alpha = 0.22f) else cs.outline.copy(alpha = 0.35f),
+        tween(280), label = "coreBorder")
+    val foreground by animateColorAsState(
+        if (online) androidx.compose.ui.graphics.lerp(cs.onSurface, color, 0.45f)
+        else cs.onSurfaceVariantSummary, tween(280), label = "coreForeground")
     val cellPress = remember { MutableInteractionSource() }
+    val pressed by cellPress.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, tween(140), label = "corePress")
     Column(
         modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .semantics { stateDescription = if (processing) "处理中" else if (online) "在线，$freqText" else "离线" }
+            .defaultMinSize(minHeight = 78.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(cellBg)
             .border(1.dp, cellBorder, RoundedCornerShape(12.dp))
@@ -113,9 +131,12 @@ fun CoreCell(
                     ) { onClick() }
                 } else Modifier
             )
-            .padding(vertical = 9.dp),
+            .padding(horizontal = 3.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Box(Modifier.size(5.dp).clip(CircleShape).background(
+            if (processing) cs.primary else if (online) foreground else cs.outline))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = "CPU $id",
             color = if (online) cs.onSurface else cs.onSurfaceVariantSummary,
@@ -124,9 +145,11 @@ fun CoreCell(
         )
         Spacer(Modifier.height(3.dp))
         Text(
-            text = freqText,
-            color = if (online) color else cs.onSurfaceVariantSummary,
-            fontSize = 10.sp
+            text = if (processing) "处理中…" else freqText,
+            color = foreground,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

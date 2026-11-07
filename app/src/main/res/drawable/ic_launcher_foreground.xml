@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-<path android:pathData="M43,31 L65,31 Q77,31 77,43 L77,49 L68,49 L68,44 Q68,40 64,40 L44,40 Q40,40 40,44 L40,64 Q40,68 44,68 L64,68 Q68,68 68,64 L68,60 L56,60 L56,51 L77,51 L77,65 Q77,77 65,77 L43,77 Q31,77 31,65 L31,43 Q31,31 43,31 Z" android:fillColor="#F4FAFF"/>
-<path android:pathData="M45,45 L51,45 L51,51 L45,51 Z M45,55 L51,55 L51,61 L45,61 Z M55,45 L61,45 L61,49 L55,49 Z" android:fillColor="#64FFD8"/>
-<path android:pathData="M25,44 L28,44 M25,54 L28,54 M25,64 L28,64 M44,25 L44,28 M54,25 L54,28 M64,25 L64,28 M44,80 L44,83 M54,80 L54,83 M64,80 L64,83" android:fillColor="#00000000" android:strokeColor="#A6D9FF" android:strokeWidth="3" android:strokeLineCap="round"/>
+<!-- Selected by maintainer: 15_八核休眠.svg. Insets protect artwork from launcher masks. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="512" android:viewportHeight="512">
+  <group android:scaleX="0.85" android:scaleY="0.85" android:pivotX="256" android:pivotY="256">
+    <path android:pathData="M173.0,116.0 H339.0 A57.0,57.0 0 0 1 396.0,173.0 V339.0 A57.0,57.0 0 0 1 339.0,396.0 H173.0 A57.0,57.0 0 0 1 116.0,339.0 V173.0 A57.0,57.0 0 0 1 173.0,116.0 Z" android:fillColor="#263D53" />
+    <path android:pathData="M156.0,176.0 H179.0 A13.0,13.0 0 0 1 192.0,189.0 V224.0 A13.0,13.0 0 0 1 179.0,237.0 H156.0 A13.0,13.0 0 0 1 143.0,224.0 V189.0 A13.0,13.0 0 0 1 156.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M215.0,176.0 H238.0 A13.0,13.0 0 0 1 251.0,189.0 V224.0 A13.0,13.0 0 0 1 238.0,237.0 H215.0 A13.0,13.0 0 0 1 202.0,224.0 V189.0 A13.0,13.0 0 0 1 215.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M274.0,176.0 H297.0 A13.0,13.0 0 0 1 310.0,189.0 V224.0 A13.0,13.0 0 0 1 297.0,237.0 H274.0 A13.0,13.0 0 0 1 261.0,224.0 V189.0 A13.0,13.0 0 0 1 274.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M333.0,176.0 H356.0 A13.0,13.0 0 0 1 369.0,189.0 V224.0 A13.0,13.0 0 0 1 356.0,237.0 H333.0 A13.0,13.0 0 0 1 320.0,224.0 V189.0 A13.0,13.0 0 0 1 333.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M156.0,255.0 H179.0 A13.0,13.0 0 0 1 192.0,268.0 V303.0 A13.0,13.0 0 0 1 179.0,316.0 H156.0 A13.0,13.0 0 0 1 143.0,303.0 V268.0 A13.0,13.0 0 0 1 156.0,255.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M215.0,255.0 H238.0 A13.0,13.0 0 0 1 251.0,268.0 V303.0 A13.0,13.0 0 0 1 238.0,316.0 H215.0 A13.0,13.0 0 0 1 202.0,303.0 V268.0 A13.0,13.0 0 0 1 215.0,255.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M274.0,255.0 H297.0 A13.0,13.0 0 0 1 310.0,268.0 V303.0 A13.0,13.0 0 0 1 297.0,316.0 H274.0 A13.0,13.0 0 0 1 261.0,303.0 V268.0 A13.0,13.0 0 0 1 274.0,255.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M333.0,255.0 H356.0 A13.0,13.0 0 0 1 369.0,268.0 V303.0 A13.0,13.0 0 0 1 356.0,316.0 H333.0 A13.0,13.0 0 0 1 320.0,303.0 V268.0 A13.0,13.0 0 0 1 333.0,255.0 Z" android:fillColor="#455A6A" />
+    <path android:pathData="M338.0,274.0 H338.0 A3.0,3.0 0 0 1 341.0,277.0 V294.0 A3.0,3.0 0 0 1 338.0,297.0 H338.0 A3.0,3.0 0 0 1 335.0,294.0 V277.0 A3.0,3.0 0 0 1 338.0,274.0 Z" android:fillColor="#B6C5CF" />
+    <path android:pathData="M351.0,274.0 H351.0 A3.0,3.0 0 0 1 354.0,277.0 V294.0 A3.0,3.0 0 0 1 351.0,297.0 H351.0 A3.0,3.0 0 0 1 348.0,294.0 V277.0 A3.0,3.0 0 0 1 351.0,274.0 Z" android:fillColor="#B6C5CF" />
+    <path android:pathData="M156 99V116M156 396V413M99 156H116M396 156H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M206 99V116M206 396V413M99 206H116M396 206H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M256 99V116M256 396V413M99 256H116M396 256H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M306 99V116M306 396V413M99 306H116M396 306H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M356 99V116M356 396V413M99 356H116M396 356H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  </group>
 </vector>

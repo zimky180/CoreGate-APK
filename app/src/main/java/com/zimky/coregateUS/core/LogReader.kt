@@ -61,10 +61,17 @@ object LogReader {
     /** 清空所有日志文件。 */
     fun clear(sh: RootShell, cb: ((Int, String, String) -> Unit)? = null) {
         val c = StringBuilder()
+        c.append("failed=0; ")
         for (p in PATHS) {
-            c.append(": > ").append(p).append(" 2>/dev/null; ")
+            // 不向缺失目录写入；用普通命令而非特殊内建 ':'，避免重定向错误终止 Shell。
+            c.append("if [ -f '").append(p).append("' ]; then ")
+                .append("if ! printf '' > '").append(p).append("'; then failed=1; fi; fi; ")
         }
-        c.append("echo ok")
-        sh.exec(c.toString(), cb)
+        c.append("if [ \"${'$'}failed\" -eq 0 ]; then echo COREGATE_LOG_CLEAR_OK; exit 0; else exit 1; fi")
+        sh.exec(c.toString()) { code, out, err ->
+            val success = code == 0 && out.lineSequence().any { it.trim() == "COREGATE_LOG_CLEAR_OK" }
+            if (success) RootShell.clearHistory()
+            cb?.invoke(if (success) 0 else if (code == 0) -1 else code, out, err)
+        }
     }
 }
