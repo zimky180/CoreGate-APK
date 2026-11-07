@@ -38,6 +38,9 @@ fun LiquidCard(
 /** Only the drawing observes the animation; children do not recompose on every frame. */
 internal fun Modifier.liquidSheen(): Modifier = composed {
     val tint = MiuixTheme.colorScheme.primary
+    val gravity = rememberLiquidGravity()
+    val position = remember { floatArrayOf(0.5f, 0.08f) }
+    val frameTime = remember { longArrayOf(0L) }
     val transition = rememberInfiniteTransition(label = "liquidLight")
     val phase = transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
@@ -50,8 +53,19 @@ internal fun Modifier.liquidSheen(): Modifier = composed {
             val p = phase.value
             val radius = size.width * 0.70f
             val depth = minOf(size.height * 0.62f, 180.dp.toPx())
-            val center = Offset(size.width * (0.18f + p * 0.64f),
-                size.height * (0.04f + sin(p * PI).toFloat() * 0.06f))
+            val now = android.os.SystemClock.uptimeMillis()
+            val live = gravity.lastSample != 0L && now - gravity.lastSample < 1500L
+            val direction = gravity.direction
+            val targetX = if (live) 0.5f + direction.x * 0.44f else 0.18f + p * 0.64f
+            val targetY = if (live) 0.5f + direction.y * 0.44f else
+                0.04f + sin(p * PI).toFloat() * 0.06f
+            val dt = if (frameTime[0] == 0L) 0.016f else
+                ((now - frameTime[0]) / 1000f).coerceIn(0f, 0.1f)
+            frameTime[0] = now
+            val follow = 1f - kotlin.math.exp(-dt / 0.22f)
+            position[0] += (targetX - position[0]) * follow
+            position[1] += (targetY - position[1]) * follow
+            val center = Offset(size.width * position[0], size.height * position[1])
             scale(1f, depth / radius, pivot = center) {
                 drawCircle(Brush.radialGradient(
                     0f to tint.copy(alpha = 0.105f),

@@ -155,7 +155,9 @@ internal fun MusicDroplet(
         val actualHeight = constraints.constrainHeight(height)
         layout(actualWidth, actualHeight) {
             if (p > 0f) full.placeRelative(actualWidth - full.width, actualHeight - full.height)
-            small.placeRelative(actualWidth - small.width, actualHeight - small.height)
+            // A transparent clickable still participates in hit testing: remove the note
+            // from placement once expanded so it cannot cover the queue button.
+            if (p < 0.16f) small.placeRelative(actualWidth - small.width, actualHeight - small.height)
         }
     }
 }

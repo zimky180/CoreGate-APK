@@ -401,7 +401,12 @@ fun BoxScope.HomeMusicPlayer() {
                             if (selected == null) { returnToQueue = false; editingId = null; edit = true } else stream.toggle(selected.url)
                         }
                         MusicTransportButton("next", "随机下一首", tracks.size > 1) { step(1) }
-                        TextButton("歌单", onClick = { showQueue = true })
+                        TextButton("歌单", onClick = {
+                            edit = false
+                            returnToQueue = false
+                            editingId = null
+                            showQueue = true
+                        })
                     }
                 }
         }
