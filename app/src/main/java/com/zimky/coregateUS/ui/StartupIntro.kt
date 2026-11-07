@@ -108,11 +108,15 @@ private class IntroArtwork {
 @Composable
 fun StartupIntro(
     started: Boolean = true,
+    moving: Boolean = true,
+    startBounds: androidx.compose.ui.geometry.Rect? = null,
     onIconBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     onIconDrawn: () -> Unit = {},
     onFinished: () -> Unit
 ) {
     val clock = remember { Animatable(0f) }
+    val handoff = remember { Animatable(0f) }
+    var iconBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val owner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val currentFinished by rememberUpdatedState(onFinished)
@@ -124,9 +128,11 @@ fun StartupIntro(
         }.getOrDefault(1f)
         if (scale == 0f) 0 else 2600
     }
-    LaunchedEffect(owner, duration, started) {
-        if (!started) return@LaunchedEffect
+    LaunchedEffect(owner, duration, started, moving) {
+        if (!started || !moving) return@LaunchedEffect
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            handoff.animateTo(1f, tween(if (duration == 0) 0 else 340,
+                easing = androidx.compose.animation.core.FastOutSlowInEasing))
             val remaining = ((1f - clock.value) * duration).toInt().coerceAtLeast(0)
             clock.animateTo(1f, tween(remaining, easing = LinearEasing))
             currentFinished()
@@ -177,14 +183,23 @@ fun StartupIntro(
         ) {
             Box(Modifier.size(140.dp).onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionOnScreen()
-                onIconBounds(androidx.compose.ui.geometry.Rect(origin,
+                val measured = androidx.compose.ui.geometry.Rect(origin,
                     androidx.compose.ui.geometry.Size(coordinates.size.width.toFloat(),
-                        coordinates.size.height.toFloat())))
+                        coordinates.size.height.toFloat()))
+                iconBounds = measured
+                onIconBounds(measured)
             }) {
                 Box(Modifier.fillMaxSize().graphicsLayer {
                     alpha = iconIn
-                    scaleX = 0.94f + iconIn * 0.06f
-                    scaleY = scaleX
+                    val target = iconBounds
+                    val source = startBounds
+                    val remaining = 1f - handoff.value
+                    if (target != null && source != null && target.width > 0f && target.height > 0f) {
+                        translationX = (source.center.x - target.center.x) * remaining
+                        translationY = (source.center.y - target.center.y) * remaining
+                        scaleX = 1f + (source.width / target.width - 1f) * remaining
+                        scaleY = 1f + (source.height / target.height - 1f) * remaining
+                    }
                 }) {
                     // Black system splash and transparent foreground share the same artwork.
                     Image(painterResource(R.drawable.ic_launcher_foreground), "CoreGate 图标",

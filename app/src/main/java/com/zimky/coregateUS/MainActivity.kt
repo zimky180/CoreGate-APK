@@ -110,6 +110,8 @@ class MainActivity : ComponentActivity() {
     private var introIconBounds: androidx.compose.ui.geometry.Rect? = null
     private var systemIntroComplete by mutableStateOf(false)
     private var introIconDrawn = false
+    private var introStartBounds by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+    private var introOverlayRemoved by mutableStateOf(false)
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -130,50 +132,33 @@ class MainActivity : ComponentActivity() {
             val remaining = if (scale == 0f || savedInstanceState != null) 0L
                 else (680L * scale - elapsed).toLong().coerceIn(0L, 1200L)
             splash.postDelayed({
-                val target = introIconBounds
-                if (scale == 0f || target == null || icon == null || icon.width == 0 || icon.height == 0) {
-                    systemIntroComplete = true
-                    splash.remove()
-                } else {
-                    // Map the drawable viewport through ImageView's real matrix, including
-                    // the platform's FIT_CENTER scale and padding, before moving the View.
-                    val local = android.graphics.RectF(0f, 0f, icon.width.toFloat(), icon.height.toFloat())
-                    if (icon is android.widget.ImageView) {
-                        icon.drawable?.let { drawable ->
-                            local.set(drawable.bounds)
-                            icon.imageMatrix.mapRect(local)
-                            local.offset(icon.paddingLeft.toFloat(), icon.paddingTop.toFloat())
-                        }
-                    }
+                if (icon != null && icon.width > 0 && icon.height > 0) {
                     val location = IntArray(2)
                     icon.getLocationOnScreen(location)
-                    val sx = target.width / local.width().coerceAtLeast(1f)
-                    val sy = target.height / local.height().coerceAtLeast(1f)
-                    icon.pivotX = local.centerX()
-                    icon.pivotY = local.centerY()
-                    icon.animate()
-                        .translationX(icon.translationX + target.center.x - location[0] - local.centerX())
-                        .translationY(icon.translationY + target.center.y - location[1] - local.centerY())
-                        .scaleX(sx)
-                        .scaleY(sy)
-                        .setDuration((280L * scale).toLong())
-                        .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
-                        .withEndAction {
-                            systemIntroComplete = true
-                            // Wait for the actual Compose draw, not a fixed number of VSYNCs.
-                            val deadline = android.os.SystemClock.uptimeMillis() + 500L
-                            val finish = object : Runnable {
-                                override fun run() {
-                                    if (introIconDrawn || android.os.SystemClock.uptimeMillis() >= deadline) {
-                                        splash.postOnAnimation { splash.remove() }
-                                    } else splash.postOnAnimation(this)
-                                }
-                            }
-                            splash.postOnAnimation(finish)
-                        }.start()
+                    introStartBounds = androidx.compose.ui.geometry.Rect(
+                        location[0].toFloat(), location[1].toFloat(),
+                        location[0] + icon.width.toFloat(), location[1] + icon.height.toFloat())
                 }
+                systemIntroComplete = true
+                // The application draws the same chip at the system icon's screen bounds.
+                // Remove the overlay only after that frame exists; all subsequent movement
+                // belongs to this single Compose image, including its final resting frame.
+                val deadline = android.os.SystemClock.uptimeMillis() + 500L
+                val finish = object : Runnable {
+                    override fun run() {
+                        if (introIconDrawn || android.os.SystemClock.uptimeMillis() >= deadline) {
+                            splash.animate().alpha(0f).setDuration(if (scale == 0f) 0L else 80L)
+                                .withEndAction {
+                                    splash.remove()
+                                    introOverlayRemoved = true
+                                }.start()
+                        } else splash.postOnAnimation(this)
+                    }
+                }
+                splash.postOnAnimation(finish)
             }, remaining)
         }
+
         setContent {
             var introVisible by rememberSaveable { mutableStateOf(savedInstanceState == null) }
             var appearance by remember { mutableStateOf(AppSettings.load(this@MainActivity)) }
@@ -224,6 +209,8 @@ class MainActivity : ComponentActivity() {
             if (introVisible) {
                 StartupIntro(
                     started = systemIntroComplete,
+                    moving = introOverlayRemoved,
+                    startBounds = introStartBounds,
                     onIconBounds = { introIconBounds = it },
                     onIconDrawn = { introIconDrawn = true },
                     onFinished = { introVisible = false }
