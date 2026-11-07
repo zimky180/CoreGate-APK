@@ -50,7 +50,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
-import top.yukonga.miuix.kmp.basic.Card
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -358,10 +358,14 @@ fun BoxScope.HomeMusicPlayer() {
     }
     // One surface remains anchored at the right edge throughout both transitions.
     Box(Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = PAGE_BOTTOM_INSET + 8.dp)) {
-        Card(Modifier.widthIn(max = 280.dp).shadow(10.dp, RoundedCornerShape(22.dp))
-            .clip(RoundedCornerShape(22.dp))
-            .animateContentSize(animationSpec = tween(320), alignment = Alignment.BottomEnd)) {
-            if (expanded) {
+        MusicDroplet(
+            expanded = expanded,
+            color = cs.surface,
+            onExpand = { expanded = true },
+            button = {
+                Text(if (stream.playing) "‹ ♫" else "‹ ♪", color = cs.primary, fontSize = 20.sp)
+            }
+        ) {
                 Column(Modifier.width(280.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AnimatedContent(targetState = track, modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)),
@@ -394,12 +398,6 @@ fun BoxScope.HomeMusicPlayer() {
                         TextButton("歌单", onClick = { showQueue = true })
                     }
                 }
-            } else {
-                Box(Modifier.size(width = 56.dp, height = 48.dp).clickable { expanded = true },
-                    contentAlignment = Alignment.Center) {
-                    Text(if (stream.playing) "‹ ♫" else "‹ ♪", color = cs.primary, fontSize = 20.sp)
-                }
-            }
         }
     }
     if (showQueue) Dialog(onDismissRequest = { showQueue = false }) {

@@ -24,6 +24,7 @@ import androidx.compose.ui.window.Dialog
 import com.zimky.coregateUS.BuildConfig
 import com.zimky.coregateUS.core.ApkUpdates
 import kotlinx.coroutines.launch
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

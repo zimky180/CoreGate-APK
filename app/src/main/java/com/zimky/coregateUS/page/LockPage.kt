@@ -1,6 +1,5 @@
 package com.zimky.coregateUS.page
 
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -58,7 +57,7 @@ import com.zimky.coregateUS.ui.PAGE_BOTTOM_INSET
 import com.zimky.coregateUS.ui.Semantic
 import com.zimky.coregateUS.ui.Toaster
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -171,7 +170,6 @@ fun LockPage(
             tween(300), label = "homeStateColor")
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier
-                .background(Brush.verticalGradient(listOf(stateColor.copy(alpha = 0.07f), Color.Transparent)))
                 .padding(horizontal = 20.dp, vertical = 22.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween) {

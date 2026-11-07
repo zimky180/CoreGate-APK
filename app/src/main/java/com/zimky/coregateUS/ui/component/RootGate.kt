@@ -29,7 +29,7 @@ import com.zimky.coregateUS.core.RootFlag
 import com.zimky.coregateUS.core.RootShell
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.Card
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

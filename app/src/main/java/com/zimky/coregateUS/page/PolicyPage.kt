@@ -64,7 +64,7 @@ import com.zimky.coregateUS.ui.SubText
 import com.zimky.coregateUS.ui.SwitchRow
 import com.zimky.coregateUS.ui.Toaster
 import top.yukonga.miuix.kmp.basic.Badge
-import top.yukonga.miuix.kmp.basic.Card
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

@@ -27,7 +27,7 @@ import com.zimky.coregateUS.ui.*
 import com.zimky.coregateUS.ui.component.FloatingBottomBar
 import com.zimky.coregateUS.ui.component.FloatingBottomBarItem
 import top.yukonga.miuix.kmp.basic.Badge
-import top.yukonga.miuix.kmp.basic.Card
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.blur.layerBackdrop

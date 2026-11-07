@@ -85,7 +85,7 @@ import com.zimky.coregateUS.ui.component.FloatingBottomBarItem
 import com.zimky.coregateUS.ui.theme.AppSettings
 import com.zimky.coregateUS.ui.theme.MiuixKernelSUTheme
 import kotlinx.coroutines.delay
-import top.yukonga.miuix.kmp.basic.Card
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.drawBackdrop

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.zimky.coregateUS.ui.*
 import com.zimky.coregateUS.ui.contributors.*
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -42,7 +43,16 @@ fun ContributorsSection() {
                 Column(Modifier.heightIn(max = 540.dp).verticalScroll(rememberScrollState()).padding(22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(profile.name, color = cs.onSurface, fontSize = 20.sp)
+                    AnimatedGradientText(
+                        text = profile.name, fontSize = 24.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        gradientColors = listOf(
+                            androidx.compose.ui.graphics.lerp(cs.onSurface, androidx.compose.ui.graphics.Color(0xFF408CFF), 0.72f),
+                            androidx.compose.ui.graphics.lerp(cs.onSurface, androidx.compose.ui.graphics.Color(0xFFAA73ED), 0.72f),
+                            androidx.compose.ui.graphics.lerp(cs.onSurface, androidx.compose.ui.graphics.Color(0xFF24B7BF), 0.72f),
+                            androidx.compose.ui.graphics.lerp(cs.onSurface, androidx.compose.ui.graphics.Color(0xFF408CFF), 0.72f)
+                        )
+                    )
                     AuthorAvatar(profile, Modifier.size(96.dp))
                     Text(profile.contributionSummary, modifier = Modifier.fillMaxWidth(),
                         color = cs.onSurfaceVariantSummary, fontSize = 14.sp)
