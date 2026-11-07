@@ -1,29 +1,45 @@
 package com.zimky.coregateUS.page
 
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
@@ -47,6 +63,9 @@ import com.zimky.coregateUS.core.CoreConfig
 import com.zimky.coregateUS.core.FreqCap
 import com.zimky.coregateUS.core.RootShell
 import com.zimky.coregateUS.core.SysProbe
+import com.zimky.coregateUS.ui.AnimatedGradientText
+import com.zimky.coregateUS.ui.PageHeading
+import com.zimky.coregateUS.ui.SectionHeading
 import com.zimky.coregateUS.ui.BottomSpacer
 import com.zimky.coregateUS.ui.CardDivider
 import com.zimky.coregateUS.ui.Gap
@@ -58,7 +77,7 @@ import com.zimky.coregateUS.ui.SubText
 import com.zimky.coregateUS.ui.SwitchRow
 import com.zimky.coregateUS.ui.Toaster
 import top.yukonga.miuix.kmp.basic.Badge
-import top.yukonga.miuix.kmp.basic.Card
+import com.zimky.coregateUS.ui.LiquidCard as Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -122,16 +141,16 @@ fun FreqPage(
             // fillMaxSize 同时给 verticalScroll 一个有界高度的视口。
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = PAGE_BOTTOM_INSET),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = PAGE_BOTTOM_INSET),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+
+        PageHeading("日常限频", "调整目标档位，查看实际状态")
 
         // ── 卡片一：限频开关 ─────────────────────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "日常限频", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                 SwitchRow(
                     title = "限制 CPU / GPU 上限频率",
                     desc = if (limitOn) {
@@ -159,81 +178,16 @@ fun FreqPage(
 
                 CardDivider()
                 HintText(
-                    "关闭后会优先按开启前的快照恢复各簇上限；没有快照时回退到硬件真实最大合法档。" +
-                        "系统重启会整体还原，不写任何系统分区。"
+                    "关闭后恢复开启前的频率上限；没有快照时恢复到设备支持的最高档。"
                 )
             }
         }
 
-        // ── 卡片二：限频实况 ─────────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "限频实况", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-
-                val allOk = items.all { it.state == FreqCap.STATE_OK }
-                val anyOver = items.any { it.state == FreqCap.STATE_OVER }
-
-                when {
-                    !limitOn -> {
-                        StateBadge("未开启", Semantic.OFF)
-                        Gap(10.dp)
-                        SubText("限频关闭，CPU / GPU 按系统默认策略运行。")
-                    }
-                    allOk -> {
-                        StateBadge("已生效", Semantic.OK)
-                        Gap(10.dp)
-                        SubText("四项全部落在目标档位。")
-                    }
-                    anyOver -> {
-                        StateBadge("未完全生效", Semantic.ERR)
-                        Gap(10.dp)
-                        SubText(
-                            "有项目仍未压到目标值，可能刚改动、还没到下一轮循环，" +
-                                "或被其他模块 / 系统策略改写。"
-                        )
-                    }
-                    else -> {
-                        BreathingBadge("部分生效", Semantic.WARN)
-                        Gap(10.dp)
-                        SubText("部分项目读不到实测值，稍等片刻再看。")
-                    }
-                }
-
-                CardDivider()
-
-                items.forEach { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        LabelText(item.name)
-                        SubText(item.actual, modifier = Modifier.padding(start = 8.dp))
-                        // 尾部标签靠右
-                        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
-                            StateBadge(
-                                FreqCap.stateText(item.state),
-                                Color(FreqCap.stateColor(item.state))
-                            )
-                        }
-                    }
-                }
-
-                Gap(6.dp)
-                HintText("实测值来自 scaling_max_freq / max_gpuclk / max_pwrlevel，随系统刷新。")
-            }
-        }
+        SectionHeading("目标档位", "松手保存，等待模块应用")
 
         // ── 卡片三：限频目标档位（可自定义） ─────────────────────────
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(text = "限频目标档位", color = cs.onSurface, fontSize = 16.sp)
-                Gap(12.dp)
-                SubText("拖动滑杆设定上限，松手即写入 config.json，模块下一轮循环生效。")
-                CardDivider()
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
 
                 val littleAvail = s?.littleAvail ?: emptyList()
                 val bigAvail = s?.bigAvail ?: emptyList()
@@ -340,14 +294,79 @@ fun FreqPage(
 
                 Gap(10.dp)
                 HintText(
-                    if (littleAvail.isEmpty()) {
-                        "未读到内核档位表，滑杆按 100 MHz 步进近似取值；" +
-                            "写入后内核会自动落到最近的真实档位。"
+                    if (littleAvail.isEmpty() || bigAvail.isEmpty() || gpuAvail.isEmpty()) {
+                        "部分档位表未读到，对应滑杆使用备用档位；请以生效检查中的实际值为准。"
                     } else {
-                        "滑杆只吸附内核实测的 scaling_available_frequencies，" +
-                            "避免写进非法档位被内核回弹。"
-                    } + "写入时 GPU 频率额外 +800000 做对齐，" +
-                        "因此实测值可能是 500000000 这种整数。"
+                        "滑杆使用设备支持的实际档位，保存的目标会同步到首页。"
+                    }
+                )
+            }
+        }
+
+        SectionHeading("生效检查", "限频不能百分百保证生效；对照目标与设备实际上限")
+
+        // ── 卡片二：限频实况 ─────────────────────────────────────────
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+
+                val allOk = items.all { it.state == FreqCap.STATE_OK }
+                val anyOver = items.any { it.state == FreqCap.STATE_OVER }
+
+                when {
+                    !limitOn -> {
+                        StateBadge("未开启", Semantic.OFF)
+                        Gap(10.dp)
+                        SubText("限频关闭，CPU / GPU 按系统默认策略运行。")
+                    }
+                    allOk -> {
+                        StateBadge("已生效", Semantic.OK)
+                        Gap(10.dp)
+                        SubText("四项全部落在目标档位。")
+                    }
+                    anyOver -> {
+                        StateBadge("未完全生效", Semantic.ERR)
+                        Gap(10.dp)
+                        SubText(
+                            "有项目仍未压到目标值，可能刚改动、还没到下一轮循环，" +
+                                "或被其他模块 / 系统策略改写。"
+                        )
+                    }
+                    else -> {
+                        BreathingBadge("部分生效", Semantic.WARN)
+                        Gap(10.dp)
+                        SubText("部分项目读不到实测值，稍等片刻再看。")
+                    }
+                }
+
+                CardDivider()
+
+                items.forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            LabelText(item.name)
+                            HintText("目标 ${item.target}")
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            SubText(item.actual)
+                            Gap(4.dp)
+                            StateBadge(
+                                FreqCap.stateText(item.state),
+                                Color(FreqCap.stateColor(item.state))
+                            )
+                        }
+                    }
+                }
+
+                Gap(6.dp)
+                HintText("以上为实际上限，目标值来自当前配置；保存后等待模块下一轮应用。")
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    text = "刷新限频实况", onClick = onRefresh
                 )
             }
         }
@@ -356,11 +375,11 @@ fun FreqPage(
     }
 }
 
-/** 状态徽标：静态，白色文字，与 KernelSU 徽标一致。 */
+/** 状态徽标：浅色底与流动渐变文字，保留状态语义色。 */
 @Composable
 private fun StateBadge(text: String, color: Color) {
-    Badge(containerColor = color, contentColor = Color.White) {
-        Text(text = text, fontSize = 12.sp, color = Color.White)
+    Badge(containerColor = color.copy(alpha = 0.14f), contentColor = color) {
+        AnimatedGradientText(text = text, color = color)
     }
 }
 
@@ -378,9 +397,7 @@ private fun BreathingBadge(text: String, color: Color) {
         label = "freqBadgeAlpha"
     )
     Box(modifier = Modifier.alpha(alpha)) {
-        Badge(containerColor = color, contentColor = Color.White) {
-            Text(text = text, fontSize = 12.sp, color = Color.White)
-        }
+        StateBadge(text, color)
     }
 }
 
@@ -431,7 +448,8 @@ private fun FreqSliderRow(
         }
         best
     }
-    var idx by remember(targetIdx) { mutableIntStateOf(targetIdx) }
+    val indexState = remember(steps, currentMhz) { mutableIntStateOf(targetIdx) }
+    var idx by indexState
     val shownMhz = steps.getOrElse(idx) { fallbackMhz }
 
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -450,104 +468,131 @@ private fun FreqSliderRow(
         }
         Gap(6.dp)
         MiuixSlider(
+            name = name,
             index = idx,
             maxIndex = steps.size - 1,
             onIndexChange = { idx = it },
-            onCommit = { onCommit(steps.getOrElse(idx) { fallbackMhz }) }
+            onCommit = { selected ->
+                idx = selected
+                onCommit(steps.getOrElse(selected) { fallbackMhz })
+            }
         )
         Gap(2.dp)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             HintText("${steps.firstOrNull() ?: fallbackMhz}")
-            HintText(if (hasTable) "${steps.size} 档" else "100 MHz 步进")
+            HintText(if (hasTable) "${steps.size} 档" else "备用档位")
             HintText("${steps.lastOrNull() ?: fallbackMhz}")
         }
     }
 }
 
-/**
- * 自绘滑杆。
- *
- * 项目里没有现成的 Slider 组件，Material3 的 Slider 又与 Miuix 的视觉语言不合，
- * 因此手写一个最小可用版本：圆角轨道 + 实心进度 + 白色圆钮，
- * 配色全部走 [MiuixTheme.colorScheme]，与其余卡片一致。
- *
- * 交互用 detectHorizontalDragGestures + detectTapGestures 组合：
- * 点一下跳到该位置，按住拖动连续更新，松手回调 [onCommit]。
- */
+/** 连续跟手绘制，数值映射真实档位；松手吸附并只提交一次。 */
 @Composable
 private fun MiuixSlider(
+    name: String,
     index: Int,
     maxIndex: Int,
     onIndexChange: (Int) -> Unit,
-    onCommit: () -> Unit
+    onCommit: (Int) -> Unit
 ) {
     val cs = MiuixTheme.colorScheme
-    val trackH = 6.dp
-    val knobR = 9.dp
     var widthPx by remember { mutableIntStateOf(0) }
-
-    val fraction = if (maxIndex <= 0) 0f else index.toFloat() / maxIndex.toFloat()
-
-    // 拖动回调里若直接读 index，会拿到 pointerInput 建立那一刻的旧值，
-    // 快速拖动时 pick 的「没变化就不回调」判断就会失准、漏掉末段位移。
-    // 用 rememberUpdatedState 保证回调里始终读到最新 index。
+    var dragging by remember { mutableStateOf(false) }
+    var startIndex by remember { mutableIntStateOf(index) }
+    var position by remember(maxIndex) {
+        mutableFloatStateOf(if (maxIndex > 0) index.toFloat() / maxIndex else 0f)
+    }
     val latestIndex by rememberUpdatedState(index)
+    val latestChange by rememberUpdatedState(onIndexChange)
+    val latestCommit by rememberUpdatedState(onCommit)
+    val knobRadius = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.toPx() }
+
+    LaunchedEffect(index, maxIndex) {
+        if (!dragging) position = if (maxIndex > 0) index.toFloat() / maxIndex else 0f
+    }
+    val displayed = animateFloatAsState(
+        targetValue = position,
+        animationSpec = tween(if (dragging) 0 else 120),
+        label = "freqSliderPosition"
+    )
 
     fun pick(x: Float) {
-        if (maxIndex <= 0 || widthPx <= 0) return
-        val f = (x / widthPx).coerceIn(0f, 1f)
-        val i = Math.round(f * maxIndex)
-        if (i != latestIndex) onIndexChange(i)
+        val travel = widthPx - knobRadius * 2f
+        if (maxIndex <= 0 || travel <= 0f) return
+        position = ((x - knobRadius) / travel).coerceIn(0f, 1f)
+        val selected = (position * maxIndex).roundToInt()
+        if (selected != latestIndex) latestChange(selected)
     }
 
-    Box(
+    fun finish() {
+        if (maxIndex <= 0) return
+        val selected = (position * maxIndex).roundToInt().coerceIn(0, maxIndex)
+        position = selected.toFloat() / maxIndex
+        dragging = false
+        latestCommit(selected)
+    }
+
+    Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(48.dp)
             .onSizeChanged { widthPx = it.width }
-            .pointerInput(maxIndex, widthPx) {
-                detectTapGestures { offset -> pick(offset.x) }
+            .semantics {
+                contentDescription = "$name 频率档位"
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    index.toFloat(), 0f..maxIndex.coerceAtLeast(0).toFloat(),
+                    (maxIndex - 1).coerceAtLeast(0)
+                )
+                setProgress { requested ->
+                    if (maxIndex <= 0 || !requested.isFinite()) false
+                    else {
+                        val selected = requested.roundToInt().coerceIn(0, maxIndex)
+                        if (selected != latestIndex) {
+                            latestChange(selected)
+                            latestCommit(selected)
+                        }
+                        true
+                    }
+                }
             }
-            .pointerInput(maxIndex, widthPx, index) {
+            .pointerInput(maxIndex, widthPx, knobRadius) {
+                detectTapGestures { offset ->
+                    if (maxIndex > 0) {
+                        pick(offset.x)
+                        finish()
+                    }
+                }
+            }
+            .pointerInput(maxIndex, widthPx, knobRadius) {
                 detectHorizontalDragGestures(
-                    onDragEnd = { onCommit() },
-                    onDragCancel = { onCommit() }
+                    onDragStart = { offset ->
+                        startIndex = latestIndex
+                        dragging = true
+                        pick(offset.x)
+                    },
+                    onDragEnd = { finish() },
+                    onDragCancel = {
+                        position = if (maxIndex > 0) startIndex.toFloat() / maxIndex else 0f
+                        dragging = false
+                        latestChange(startIndex)
+                    }
                 ) { change, _ ->
                     change.consume()
                     pick(change.position.x)
                 }
-            },
-        contentAlignment = Alignment.CenterStart
+            }
     ) {
-        // 轨道底
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(trackH)
-                .clip(RoundedCornerShape(trackH / 2))
-                .background(cs.surfaceContainerHigh)
-        )
-        // 已选进度
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(fraction)
-                .height(trackH)
-                .clip(RoundedCornerShape(trackH / 2))
-                .background(cs.primary)
-        )
-        // 圆钮：用 offset 定位，注意左右各留半个钮宽，避免贴到轨道外侧
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val totalW = maxWidth
-            val knobOffset = (totalW - knobR * 2) * fraction
-            Box(
-                modifier = Modifier
-                    .offset(x = knobOffset)
-                    .size(knobR * 2)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .border(width = 2.dp, color = cs.primary, shape = CircleShape)
-            )
+        val start = Offset(knobRadius, center.y)
+        val end = Offset((size.width - knobRadius).coerceAtLeast(knobRadius), center.y)
+        val fraction = if (dragging) position else displayed.value
+        val thumb = Offset(start.x + (end.x - start.x) * fraction, center.y)
+        drawLine(cs.surfaceContainerHigh, start, end, 6.dp.toPx(), StrokeCap.Round)
+        if (thumb.x > start.x) {
+            drawLine(cs.primary, start, thumb, 6.dp.toPx(), StrokeCap.Round)
         }
+        drawCircle(cs.primary.copy(alpha = 0.12f), 14.dp.toPx(), thumb)
+        drawCircle(cs.primary, knobRadius, thumb)
+        drawCircle(Color.White, 6.dp.toPx(), thumb)
     }
 }
 
@@ -573,32 +618,60 @@ private fun StepperRow(
             Gap(2.dp)
             HintText(hint)
         }
-        StepButton("－", enabled = canMinus, onClick = onMinus)
-        Box(
-            modifier = Modifier.width(52.dp),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MiuixTheme.colorScheme.surfaceContainerHigh),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "$value", color = MiuixTheme.colorScheme.onSurface, fontSize = 15.sp)
+            StepButton(plus = false, enabled = canMinus, onClick = onMinus)
+            Box(
+                modifier = Modifier.width(40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "$value", color = MiuixTheme.colorScheme.onSurface, fontSize = 15.sp)
+            }
+            StepButton(plus = true, enabled = canPlus, onClick = onPlus)
         }
-        StepButton("＋", enabled = canPlus, onClick = onPlus)
     }
 }
 
-/** 步进器按钮：圆形描边，禁用态整体降透明度。 */
+/** 一体式步进器两端的按钮；线条图标避免字形和基线不一致。 */
 @Composable
-private fun StepButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+private fun StepButton(plus: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val cs = MiuixTheme.colorScheme
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale = animateFloatAsState(
+        targetValue = if (pressed) 0.9f else 1f,
+        animationSpec = tween(120), label = "freqStepPress"
+    )
     Box(
         modifier = Modifier
-            .size(32.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .clip(CircleShape)
-            .background(cs.surfaceContainerHigh)
-            .border(width = 1.dp, color = cs.outline, shape = CircleShape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (pressed) cs.primary.copy(alpha = 0.1f) else Color.Transparent)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick
+            )
+            .semantics { contentDescription = if (plus) "增加 GPU 功耗档" else "减少 GPU 功耗档" },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = cs.onSurface, fontSize = 14.sp)
+        Canvas(Modifier.size(16.dp).graphicsLayer {
+            scaleX = scale.value
+            scaleY = scale.value
+            alpha = if (enabled) 1f else 0.3f
+        }) {
+            val color = cs.primary
+            val inset = 2.dp.toPx()
+            val stroke = 2.dp.toPx()
+            drawLine(color, Offset(inset, center.y), Offset(size.width - inset, center.y), stroke, StrokeCap.Round)
+            if (plus) drawLine(color, Offset(center.x, inset), Offset(center.x, size.height - inset), stroke, StrokeCap.Round)
+        }
     }
 }
 

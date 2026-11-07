@@ -39,30 +39,39 @@ enum class ColorMode {
  */
 fun ColorSpec.SpecVersion.effectiveFor(style: PaletteStyle): ColorSpec.SpecVersion = this
 
-/**
- * CoreGate 的主题配置。
- *
- * 对应 KernelSU 的 AppSettings，但只保留 UI 真正用到的 4 个字段，
- * 不引入 KSU 的 SharedPreferences 体系（CoreGate 的配置来源是 /data/adb/CoreGate/config.json）。
- *
- * colorMode 默认 MONET_SYSTEM：
- *   走 MiuixTheme 的 `colorMode.isMonet` 分支，从系统壁纸动态取主色（Android 12+ Monet）。
- *   此前默认 SYSTEM，会落到 `else -> null`，resolvedKeyColor 为 null，
- *   Miuix 于是用整套无主色的灰白配色 —— 这就是 v2.2.0 初版「界面纯白」的根因。
- *
- * keyColor 默认保持 0（= 不使用固定色）：
- *   MiuixTheme 里 `keyColor != 0` 的优先级高于 isMonet 分支，
- *   填了固定色会直接把动态取色盖掉，与「能动态取色就动态取色」的预期不符。
- *   若某台设备 Monet 不可用（Android 11 及以下），在 SettingsPage 里手动选固定色即可，
- *   C.ACC = #4F8CFF 是模块一直用的主色。
- */
+/** 界面主题独立保存在 App 私有偏好中，默认动态取色与绿色强调色。 */
 @Immutable
 data class AppSettings(
     val colorMode: ColorMode = ColorMode.MONET_SYSTEM,
-    val keyColor: Int = 0,
+    val keyColor: Int = 0xff43a047.toInt(),
+    val gravityGlow: Boolean = true,
+    val waterRipples: Boolean = true,
+    val skipStartupIntro: Boolean = false,
     val paletteStyle: PaletteStyle = PaletteStyle.TonalSpot,
     val colorSpec: ColorSpec.SpecVersion = ColorSpec.SpecVersion.SPEC_2021,
-)
+) {
+    fun save(context: android.content.Context) {
+        context.getSharedPreferences("appearance", 0).edit()
+            .putString("mode", colorMode.name).putInt("keyColor", keyColor)
+            .putBoolean("gravityGlow", gravityGlow)
+            .putBoolean("waterRipples", waterRipples)
+            .putBoolean("skipStartupIntro", skipStartupIntro).apply()
+    }
+    companion object {
+        fun load(context: android.content.Context): AppSettings {
+            val prefs = context.getSharedPreferences("appearance", 0)
+            val mode = runCatching { ColorMode.valueOf(prefs.getString("mode", "MONET_SYSTEM")!!) }
+                .getOrDefault(ColorMode.MONET_SYSTEM)
+            return AppSettings(colorMode = mode, keyColor = prefs.getInt("keyColor", 0xff43a047.toInt()),
+                gravityGlow = prefs.getBoolean("gravityGlow", true),
+                waterRipples = prefs.getBoolean("waterRipples", true),
+                skipStartupIntro = prefs.getBoolean("skipStartupIntro", false))
+        }
+    }
+}
+
+val LocalAppSettings = androidx.compose.runtime.staticCompositionLocalOf { AppSettings() }
+val LocalSetAppSettings = androidx.compose.runtime.staticCompositionLocalOf<(AppSettings) -> Unit> { {} }
 
 /**
  * 当前是否处于深色主题。
@@ -71,4 +80,7 @@ data class AppSettings(
  * KSU 里这是一个 @Composable 函数，放在 ui/theme 下；这里保持同一语义。
  */
 @Composable
-fun isInDarkTheme(): Boolean = androidx.compose.foundation.isSystemInDarkTheme()
+fun isInDarkTheme(): Boolean {
+    val mode = LocalAppSettings.current.colorMode
+    return mode.isDark || (mode.isSystem && androidx.compose.foundation.isSystemInDarkTheme())
+}

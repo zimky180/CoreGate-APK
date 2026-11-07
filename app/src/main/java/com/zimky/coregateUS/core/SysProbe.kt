@@ -55,6 +55,9 @@ object SysProbe {
         /** state 文件第一段（前台包名） */
         var statePkg: String = "",
         var stateRaw: String = "",
+        var temperatureRaw: String = "",
+        var moduleVersion: String = "",
+        var moduleVersionCode: Int? = null,
         var daemonAlive: Boolean = false,
         var daemonPid: Int = -1,
         /** policy0 scaling_max_freq */
@@ -174,6 +177,7 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
         // 额外给一个冗余标记：把 pid 单独再输出一次，便于诊断区人类肉眼看
         c.append("echo \"DPID:\"; cat ").append(Paths.PID).append(" 2>/dev/null; ")
         c.append("echo \"STATEF:\"; cat ").append(Paths.STATE).append(" 2>/dev/null; ")
+        c.append("echo \"THERMAL:\"; cat ").append(Paths.DIR).append("/temperature.state 2>/dev/null; ")
         // 模块就位检查（以前这里是 File(Paths.SERVICE).exists()，因为 /data/adb 是
         // 0700 root:root，普通 uid 恒判 false，直接导致「模块未刷入/损坏」的连锁误报）。
         // 现在改成同一次 root 调用里顺带判定，只输出三类标记，解析端一一对应。
@@ -181,6 +185,8 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
         c.append("elif [ -d ").append(Paths.MODULE_DIR).append(" ]; then echo \"SVCNODIR:\"; ")
         c.append("else echo \"SVCNONE:\"; fi; ")
         c.append("echo \"SVCSIZE:\"; cat ").append(Paths.SERVICE).append(" 2>/dev/null | wc -c; ")
+        c.append("echo \"MODVER:\"; sed -n 's/^version=//p' ").append(Paths.MODULE_DIR).append("/module.prop 2>/dev/null; ")
+        c.append("echo \"MODCODE:\"; sed -n 's/^versionCode=//p' ").append(Paths.MODULE_DIR).append("/module.prop 2>/dev/null; ")
         c.append("echo \"ENDPROBE:\"")
 
         sh.exec(c.toString()) { code, out, _ ->
@@ -274,6 +280,9 @@ c.append("echo \"ROOTU:\"; id -u 2>/dev/null; ")
                 if (dpid.isEmpty()) s.dbg += " · pid 文件为空且未扫到进程"
             }
 
+            s.moduleVersion = line(out, "MODVER").orEmpty().trim().removePrefix("v")
+            s.moduleVersionCode = line(out, "MODCODE")?.trim()?.toIntOrNull()
+            s.temperatureRaw = line(out, "THERMAL").orEmpty().trim()
             val st = line(out, "STATEF")
             if (st != null) {
                 s.stateRaw = st.trim()

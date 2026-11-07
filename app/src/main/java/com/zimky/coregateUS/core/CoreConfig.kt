@@ -2,14 +2,13 @@ package com.zimky.coregateUS.core
 
 import android.util.Base64
 import org.json.JSONObject
-import java.io.File
 
 /**
  * CoreConfig —— config.json / packages.txt 的读写。
  *
- * ⚠ 血泪教训：必须把 7 个字段全部写回。
+ * ⚠ 血泪教训：必须把 App 管理的字段全部写回。
  * service.sh 的 cfg_bool / cfg_int / cfg_val 在字段缺失时直接回退默认值，
- * 旧版 config.example.json 只有 7 个字段里的少数几个，
+ * 旧版配置示例缺少部分字段，
  * 一旦 APK 只写自己认识的字段，capture_boost 就会被静默关掉。
  * 所以 toJson() 永远输出全字段。
  *
@@ -27,7 +26,6 @@ object Paths {
 
     const val MODULE_DIR = "/data/adb/modules/CoreGate"
     const val SERVICE = "$MODULE_DIR/service.sh"
-    const val WEBROOT = "$MODULE_DIR/webroot"
 }
 
 /** 字段与 service.sh 一一对应，不要改名。 */
@@ -41,7 +39,7 @@ data class CoreConfig(
     /** 充电时不锁 */
     var noLockCharging: Boolean = false,
     /** 5~600 秒 */
-    var pollInterval: Int = 30,
+    var pollInterval: Int = 10,
     /** 日常限频 */
     var limitFreq: Boolean = false,
     /**
@@ -62,6 +60,14 @@ data class CoreConfig(
     var capGpuPwrLevel: Int = -1,
     /** 录屏 / 相机自动恢复 */
     var captureBoost: Boolean = false,
+    /** 温度策略：电池温度，默认关闭。 */
+    var temperatureEnabled: Boolean = false,
+    /** lock 为日常额外封锁（游戏跳过）；unlock 为高温恢复全部核心。 */
+    var temperatureMode: String = "lock",
+    var temperatureThreshold: Int = 40,
+    /** 高温时在日常封锁之外额外封锁的核心；空值表示未选择。 */
+    var temperatureLockCores: String = "",
+    var gameLockCores: String = "",
     /** 冻结：日志上报（六组，默认全关，由用户自己开） */
     var freezeGrpLog: Boolean = false,
     /** 冻结：媒体扫描 */
@@ -86,11 +92,11 @@ data class CoreConfig(
      */
     var rawExtra: Map<String, Any?>? = null
 ) {
-    /** 永远输出全部 7 个 App 管理字段，并保留 App 不认识的其它键。 */
+    /** 永远输出全部 App 管理字段，并保留模块仍支持的额外字段，移除旧功能字段。 */
     fun toJson(): JSONObject = JSONObject().apply {
         // 先铺回磁盘上原有的、App 不负责的键（如 auto_lock_count）
         rawExtra?.forEach { (k, v) ->
-            if (k in MANAGED_KEYS) return@forEach
+            if (k !in MODULE_KEYS) return@forEach
             if (v == null) put(k, JSONObject.NULL) else put(k, v)
         }
         // 再覆盖 App 管理的字段
@@ -106,6 +112,11 @@ data class CoreConfig(
         put("cap_gpu_mhz", capGpuMhz)
         put("cap_gpu_pwrlevel", capGpuPwrLevel)
         put("capture_boost", captureBoost)
+        put("temperature_enabled", temperatureEnabled)
+        put("temperature_mode", if (temperatureMode == "unlock") "unlock" else "lock")
+        put("temperature_threshold", clampTemperature(temperatureThreshold))
+        put("temperature_lock_cores", normalizeTemperatureCores(temperatureLockCores))
+        put("game_lock_cores", normalizeTemperatureCores(gameLockCores))
         // 冻结六组：键名必须与 service.sh 的 freeze_$1 拼出来的完全一致
         put("freeze_grp_log", freezeGrpLog)
         put("freeze_grp_media", freezeGrpMedia)
@@ -136,14 +147,25 @@ data class CoreConfig(
             return m
         }
 
-        /** App 自己负责写回的键，其余键一律原样保留。 */
+        /** 模块支持、但没有独立 App 属性的配置字段。 */
+        private val MODULE_KEYS = setOf(
+            "auto_lock_count", "freeze_grp_ai", "freeze_grp_voice", "freeze_grp_games",
+            "freeze_grp_themes", "freeze_grp_search"
+        )
+
         private val MANAGED_KEYS = setOf(
             "enabled", "lock_cores", "disable_core_ctl", "no_lock_charging",
             "poll_interval", "limit_freq", "capture_boost",
+            "game_lock_cores", "temperature_enabled", "temperature_mode", "temperature_threshold", "temperature_lock_cores",
             "cap_little_mhz", "cap_big_mhz", "cap_gpu_mhz", "cap_gpu_pwrlevel",
             "freeze_grp_log", "freeze_grp_media", "freeze_grp_cloud",
             "freeze_grp_diag", "freeze_grp_ad", "freeze_grp_self"
         )
+
+        fun normalizeTemperatureCores(raw: String): String = raw.split(Regex("[,，、\\s]+"))
+            .mapNotNull { it.toIntOrNull() }.filter { it > 0 }.distinct().sorted().joinToString(",")
+
+        fun clampTemperature(v: Int): Int = v.coerceIn(35, 60)
 
         fun clampInterval(v: Int): Int = when {
             v < 5 -> 5
@@ -163,7 +185,7 @@ data class CoreConfig(
                 c.lockCores = o.optString("lock_cores", "auto")
                 c.disableCoreCtl = o.optBoolean("disable_core_ctl", false)
                 c.noLockCharging = o.optBoolean("no_lock_charging", false)
-                c.pollInterval = clampInterval(o.optInt("poll_interval", 30))
+                c.pollInterval = clampInterval(o.optInt("poll_interval", 10))
                 c.limitFreq = o.optBoolean("limit_freq", false)
                 // 限频阈值：0（前三项）/ -1（pwrlevel）视为「未自定义」，由 service.sh 兜底
                 c.capLittleMhz = o.optInt("cap_little_mhz", 0)
@@ -171,6 +193,11 @@ data class CoreConfig(
                 c.capGpuMhz = o.optInt("cap_gpu_mhz", 0)
                 c.capGpuPwrLevel = o.optInt("cap_gpu_pwrlevel", -1)
                 c.captureBoost = o.optBoolean("capture_boost", false)
+                c.temperatureEnabled = o.optBoolean("temperature_enabled", false)
+                c.temperatureMode = if (o.optString("temperature_mode", "lock") == "unlock") "unlock" else "lock"
+                c.temperatureThreshold = clampTemperature(o.optInt("temperature_threshold", 40))
+                c.temperatureLockCores = normalizeTemperatureCores(o.optString("temperature_lock_cores", ""))
+                c.gameLockCores = normalizeTemperatureCores(o.optString("game_lock_cores", ""))
                 // 冻结六组，默认全关；用户自己开过才为 true
                 c.freezeGrpLog = o.optBoolean("freeze_grp_log", false)
                 c.freezeGrpMedia = o.optBoolean("freeze_grp_media", false)
@@ -184,28 +211,8 @@ data class CoreConfig(
                 if (c.lockCores.isBlank()) c.lockCores = "auto"
                 return c
             }
-            // 落到字段级兜底：模块被手改坏、或之前是别的格式
-
-            c.enabled = grabBool(s, "enabled", true)
-            c.lockCores = grabStr(s, "lock_cores", "auto")
-            c.disableCoreCtl = grabBool(s, "disable_core_ctl", false)
-            c.noLockCharging = grabBool(s, "no_lock_charging", false)
-            c.pollInterval = clampInterval(grabInt(s, "poll_interval", 30))
-            c.limitFreq = grabBool(s, "limit_freq", false)
-            c.capLittleMhz = grabInt(s, "cap_little_mhz", 0)
-            c.capBigMhz = grabInt(s, "cap_big_mhz", 0)
-            c.capGpuMhz = grabInt(s, "cap_gpu_mhz", 0)
-            c.capGpuPwrLevel = grabInt(s, "cap_gpu_pwrlevel", -1)
-            c.captureBoost = grabBool(s, "capture_boost", false)
-            c.freezeGrpLog = grabBool(s, "freeze_grp_log", false)
-            c.freezeGrpMedia = grabBool(s, "freeze_grp_media", false)
-            c.freezeGrpCloud = grabBool(s, "freeze_grp_cloud", false)
-            c.freezeGrpDiag = grabBool(s, "freeze_grp_diag", false)
-            c.freezeGrpAd = grabBool(s, "freeze_grp_ad", false)
-            c.freezeGrpSelf = grabBool(s, "freeze_grp_self", false)
-            c.loaded = true
-            if (c.lockCores.isBlank()) c.lockCores = "auto"
-            return c
+            // 解析失败时禁止把默认配置当作真实配置写回。
+            return defaults()
         }
 
         private fun grabBool(s: String, k: String, def: Boolean): Boolean {
@@ -263,19 +270,30 @@ data class CoreConfig(
         fun buildSaveCmd(cfg: CoreConfig, packages: String?): String {
             val sb = StringBuilder()
             sb.append("CFG='").append(base64(cfg.toJsonString())).append("'; ")
-            sb.append("echo \"\$CFG\" | base64 -d > ").append(Paths.FILE).append(".tmp && ")
-            sb.append("mv ").append(Paths.FILE).append(".tmp ").append(Paths.FILE).append(" && ")
-            sb.append("chmod 644 ").append(Paths.FILE).append("; ")
+            sb.append("echo \"\$CFG\" | base64 -d > ").append(Paths.FILE).append(".$$.tmp && ")
+            sb.append("mv ").append(Paths.FILE).append(".$$.tmp ").append(Paths.FILE).append(" && ")
+            sb.append("chmod 644 ").append(Paths.FILE).append(" || exit 1; ")
 
             if (packages != null) {
                 sb.append("PKG='").append(base64(packages)).append("'; ")
-                sb.append("echo \"\$PKG\" | base64 -d > ").append(Paths.PACKAGES).append(".tmp && ")
-                sb.append("mv ").append(Paths.PACKAGES).append(".tmp ").append(Paths.PACKAGES).append(" && ")
-                sb.append("chmod 644 ").append(Paths.PACKAGES).append("; ")
+                sb.append("echo \"\$PKG\" | base64 -d > ").append(Paths.PACKAGES).append(".$$.tmp && ")
+                sb.append("mv ").append(Paths.PACKAGES).append(".$$.tmp ").append(Paths.PACKAGES).append(" && ")
+                sb.append("chmod 644 ").append(Paths.PACKAGES).append(" || exit 1; ")
             }
 
-            sb.append("sync; echo OK")
-            return sb.toString()
+            sb.append("echo \"\$CFG\" | base64 -d | cmp -s - ").append(Paths.FILE).append(" || exit 1; echo OK")
+            return "mkdir -p " + Paths.DIR + " && ( " +
+                "CG_LOCK='" + Paths.DIR + "/freeze.lock'; cg_wait=0; " +
+                "while ! mkdir \"\$CG_LOCK\" 2>/dev/null; do " +
+                "cg_owner=\$(cat \"\$CG_LOCK/pid\" 2>/dev/null); " +
+                "case \"\$cg_owner\" in ''|*[!0-9]*) : ;; *) " +
+                "if ! kill -0 \"\$cg_owner\" 2>/dev/null; then rm -f \"\$CG_LOCK/pid\"; " +
+                "rmdir \"\$CG_LOCK\" 2>/dev/null; continue; fi ;; esac; " +
+                "cg_wait=\$((cg_wait+1)); [ \"\$cg_wait\" -lt 30 ] || exit 1; sleep 1; done; " +
+                "echo \$\$ > \"\$CG_LOCK/pid\"; " +
+                "trap 'rm -f \"\$CG_LOCK/pid\"; rmdir \"\$CG_LOCK\" 2>/dev/null' EXIT; " +
+                sb.toString() + " )"
+
         }
         /**
          * 一次 root 调用取回 config.json + packages.txt。
@@ -331,7 +349,7 @@ data class CoreConfig(
                 }
 
                 val cfg = parse(cfgRaw)
-                if (cfgRaw.isEmpty()) cfg.loaded = false
+                if (code != 0 || cfgRaw.isEmpty()) cfg.loaded = false
                 cb(cfg, pkgRaw, dbg)
             }
         }
@@ -358,45 +376,5 @@ data class CoreConfig(
             }
             return sb.toString()
         }
-    }
-}
-/**
- * 已废弃：模块就位判定已并入 [SysProbe.probe]（见 `Snapshot.svcState`）。
- *
- * 保留这个函数只是为了让老调用点不会因为「找不到符号」而编译失败，
- * 但**新代码一律不要再调用它**，理由有两条：
- *   1) 它自己起一次 su，而 probe 已经在同一次 root 调用里顺带读到了结果，
- *      多开一个 root 请求既慢又容易触发安全机制的误判；
- *   2) 两条判定路径并存时，一旦其中一条拿到空输出，页面之间就会出现
- *      「核心在线但模块缺失」这种自相矛盾的显示。
- *
- * 正确用法（三态，谁都不许再把 null 当 false）：
- * ```
- * val svc = snapshot?.svcState ?: SysProbe.svcCache   // true / false / null
- * ```
- */
-@Deprecated(
-    message = "改用 SysProbe 的 Snapshot.svcState / SysProbe.svcCache",
-    replaceWith = ReplaceWith("SysProbe.svcCache"),
-    level = DeprecationLevel.WARNING
-)
-fun serviceExists(sh: RootShell? = null, cb: (Boolean?) -> Unit) {
-    val cmd = "if [ -f ${Paths.SERVICE} ]; then echo CG_SVC_YES; " +
-        "elif [ -d ${Paths.MODULE_DIR} ]; then echo CG_SVC_NODIR; " +
-        "else echo CG_SVC_NO; fi"
-    if (sh == null) {
-        cb(null)
-        return
-    }
-    sh.exec(cmd) { _, out, _ ->
-        val o = out
-        cb(
-            when {
-                o.contains("CG_SVC_YES") -> true
-                o.contains("CG_SVC_NODIR") -> false
-                o.contains("CG_SVC_NO") -> false
-                else -> null   // su 没输出，判不了 —— 绝不误报「缺失」
-            }
-        )
     }
 }

@@ -1,6 +1,10 @@
 package com.zimky.coregateUS.ui.theme
 
 import android.app.Activity
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -21,6 +25,7 @@ import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 @Composable
 fun MiuixKernelSUTheme(
     appSettings: AppSettings,
+    startupActive: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -41,16 +46,17 @@ fun MiuixKernelSUTheme(
         ThemeColorSpec.Spec2021
     }
 
-    val resolvedKeyColor: Color? = when {
+    val resolvedKeyColor: Color? = remember(appSettings.keyColor, appSettings.colorMode, darkTheme, context) { when {
         appSettings.keyColor != 0 -> Color(appSettings.keyColor)
         appSettings.colorMode.isMonet ->
             if (darkTheme) dynamicDarkColorScheme(context).primary
             else dynamicLightColorScheme(context).primary
 
-        else -> null
-    }
+        // 非动态模式下，“默认”使用 CoreGate 绿色，避免回退到 Miuix 内置蓝色。
+        else -> Color(0xff43a047)
+    } }
 
-    val controller = ThemeController(
+    val controller = remember(appSettings.colorMode, resolvedKeyColor, darkTheme, miuixPaletteStyle, miuixColorSpec) { ThemeController(
         when (appSettings.colorMode) {
             ColorMode.SYSTEM -> ColorSchemeMode.System
             ColorMode.LIGHT -> ColorSchemeMode.Light
@@ -63,16 +69,16 @@ fun MiuixKernelSUTheme(
         isDark = darkTheme,
         paletteStyle = miuixPaletteStyle,
         colorSpec = miuixColorSpec,
-    )
+    ) }
 
     MiuixTheme(
         controller = controller,
         content = {
-            LaunchedEffect(darkTheme) {
+            LaunchedEffect(darkTheme, startupActive) {
                 val window = (context as? Activity)?.window ?: return@LaunchedEffect
                 WindowInsetsControllerCompat(window, window.decorView).apply {
-                    isAppearanceLightStatusBars = !darkTheme
-                    isAppearanceLightNavigationBars = !darkTheme
+                    isAppearanceLightStatusBars = !darkTheme && !startupActive
+                    isAppearanceLightNavigationBars = !darkTheme && !startupActive
                 }
             }
             CompositionLocalProvider(

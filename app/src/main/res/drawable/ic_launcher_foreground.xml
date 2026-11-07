@@ -1,28 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 图标前景：一枚圆角方框 + 内部两个小方块，呼应导航栏「锁核」图标的视觉语言 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- 外框 -->
-    <path
-        android:pathData="M38,32 L70,32 A6,6 0 0 1 76,38 L76,70 A6,6 0 0 1 70,76 L38,76 A6,6 0 0 1 32,70 L32,38 A6,6 0 0 1 38,32 Z"
-        android:strokeColor="#4F8CFF"
-        android:strokeWidth="4"
-        android:fillColor="#00000000" />
-
-    <!-- 左上小块（实心，代表在线的核心） -->
-    <path
-        android:pathData="M42,42 h10 v10 h-10 z"
-        android:fillColor="#4F8CFF" />
-
-    <!-- 右下小块（描边，代表被压制的核心） -->
-    <path
-        android:pathData="M56,56 h10 v10 h-10 z"
-        android:strokeColor="#34C759"
-        android:strokeWidth="3"
-        android:fillColor="#00000000" />
-
+<!-- Selected by maintainer: 15_八核休眠.svg. Insets protect artwork from launcher masks. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="512" android:viewportHeight="512">
+  <group android:scaleX="0.85" android:scaleY="0.85" android:pivotX="256" android:pivotY="256">
+    <path android:pathData="M173.0,116.0 H339.0 A57.0,57.0 0 0 1 396.0,173.0 V339.0 A57.0,57.0 0 0 1 339.0,396.0 H173.0 A57.0,57.0 0 0 1 116.0,339.0 V173.0 A57.0,57.0 0 0 1 173.0,116.0 Z" android:fillColor="#263D53" />
+    <path android:pathData="M156.0,176.0 H179.0 A13.0,13.0 0 0 1 192.0,189.0 V224.0 A13.0,13.0 0 0 1 179.0,237.0 H156.0 A13.0,13.0 0 0 1 143.0,224.0 V189.0 A13.0,13.0 0 0 1 156.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M215.0,176.0 H238.0 A13.0,13.0 0 0 1 251.0,189.0 V224.0 A13.0,13.0 0 0 1 238.0,237.0 H215.0 A13.0,13.0 0 0 1 202.0,224.0 V189.0 A13.0,13.0 0 0 1 215.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M274.0,176.0 H297.0 A13.0,13.0 0 0 1 310.0,189.0 V224.0 A13.0,13.0 0 0 1 297.0,237.0 H274.0 A13.0,13.0 0 0 1 261.0,224.0 V189.0 A13.0,13.0 0 0 1 274.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M333.0,176.0 H356.0 A13.0,13.0 0 0 1 369.0,189.0 V224.0 A13.0,13.0 0 0 1 356.0,237.0 H333.0 A13.0,13.0 0 0 1 320.0,224.0 V189.0 A13.0,13.0 0 0 1 333.0,176.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M156.0,255.0 H179.0 A13.0,13.0 0 0 1 192.0,268.0 V303.0 A13.0,13.0 0 0 1 179.0,316.0 H156.0 A13.0,13.0 0 0 1 143.0,303.0 V268.0 A13.0,13.0 0 0 1 156.0,255.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M215.0,255.0 H238.0 A13.0,13.0 0 0 1 251.0,268.0 V303.0 A13.0,13.0 0 0 1 238.0,316.0 H215.0 A13.0,13.0 0 0 1 202.0,303.0 V268.0 A13.0,13.0 0 0 1 215.0,255.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M274.0,255.0 H297.0 A13.0,13.0 0 0 1 310.0,268.0 V303.0 A13.0,13.0 0 0 1 297.0,316.0 H274.0 A13.0,13.0 0 0 1 261.0,303.0 V268.0 A13.0,13.0 0 0 1 274.0,255.0 Z" android:fillColor="#75E1B5" />
+    <path android:pathData="M333.0,255.0 H356.0 A13.0,13.0 0 0 1 369.0,268.0 V303.0 A13.0,13.0 0 0 1 356.0,316.0 H333.0 A13.0,13.0 0 0 1 320.0,303.0 V268.0 A13.0,13.0 0 0 1 333.0,255.0 Z" android:fillColor="#455A6A" />
+    <path android:pathData="M338.0,274.0 H338.0 A3.0,3.0 0 0 1 341.0,277.0 V294.0 A3.0,3.0 0 0 1 338.0,297.0 H338.0 A3.0,3.0 0 0 1 335.0,294.0 V277.0 A3.0,3.0 0 0 1 338.0,274.0 Z" android:fillColor="#B6C5CF" />
+    <path android:pathData="M351.0,274.0 H351.0 A3.0,3.0 0 0 1 354.0,277.0 V294.0 A3.0,3.0 0 0 1 351.0,297.0 H351.0 A3.0,3.0 0 0 1 348.0,294.0 V277.0 A3.0,3.0 0 0 1 351.0,274.0 Z" android:fillColor="#B6C5CF" />
+    <path android:pathData="M156 99V116M156 396V413M99 156H116M396 156H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M206 99V116M206 396V413M99 206H116M396 206H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M256 99V116M256 396V413M99 256H116M396 256H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M306 99V116M306 396V413M99 306H116M396 306H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M356 99V116M356 396V413M99 356H116M396 356H413" android:fillColor="#00000000" android:strokeColor="#7B97AA" android:strokeWidth="9" android:strokeLineCap="round" android:strokeLineJoin="round" />
+  </group>
 </vector>

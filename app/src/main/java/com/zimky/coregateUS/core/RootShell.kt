@@ -6,7 +6,10 @@ import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.util.ArrayDeque
-import java.util.concurrent.Executors
+import java.util.concurrent.PriorityBlockingQueue
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /**
  * 诊断用：一行执行记录
@@ -33,8 +36,19 @@ object RootShell {
 
     private const val HISTORY_MAX = 40
 
-    private val queue = Executors.newSingleThreadExecutor { r ->
+    private val sequence = AtomicLong()
+    private val pending = PriorityBlockingQueue<Runnable>(11, Comparator { a, b ->
+        val left = a as ShellTask
+        val right = b as ShellTask
+        val priority = left.rank.compareTo(right.rank)
+        if (priority != 0) priority else left.order.compareTo(right.order)
+    })
+    private val queue = ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, pending) { r ->
         Thread(r, "CoreGate-RootShell").apply { isDaemon = true }
+    }.apply { prestartCoreThread() }
+
+    fun execSave(cmd: String, cb: (Int, String, String) -> Unit) {
+        execRaw(buildSuCmd(cmd), cmd, cb, priority = true)
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -45,6 +59,11 @@ object RootShell {
         execRaw(buildSuCmd(cmd), cmd, cb)
     }
 
+    /** Read image payloads on the existing serial queue without retaining them in diagnostics. */
+    fun execPrivate(cmd: String, cb: (Int, String, String) -> Unit) {
+        execRaw(buildSuCmd(cmd), "[private image read]", cb, false)
+    }
+
     /** 执行已经拼好的完整命令（不再加 su 前缀）。 */
     fun execRaw(fullCmd: String, cb: ((exit: Int, out: String, err: String) -> Unit)? = null) {
         execRaw(fullCmd, fullCmd, cb)
@@ -53,9 +72,11 @@ object RootShell {
     private fun execRaw(
         fullCmd: String,
         showCmd: String,
-        cb: ((Int, String, String) -> Unit)?
+        cb: ((Int, String, String) -> Unit)?,
+        recordHistory: Boolean = true,
+        priority: Boolean = false
     ) {
-        queue.execute {
+        val task = Runnable {
             var exit = -1
             val out = StringBuilder()
             val err = StringBuilder()
@@ -86,10 +107,15 @@ object RootShell {
             val fErr = err.toString()
             val cost = System.currentTimeMillis() - t0
 
-            remember(ShellRecord(showCmd, fExit, cost, fOut, fErr))
+            if (recordHistory) remember(ShellRecord(showCmd, fExit, cost, fOut, fErr))
 
             main.post { cb?.invoke(fExit, fOut, fErr) }
         }
+        queue.execute(ShellTask(if (priority) 0 else 1, sequence.getAndIncrement(), task))
+    }
+
+    private class ShellTask(val rank: Int, val order: Long, private val task: Runnable) : Runnable {
+        override fun run() = task.run()
     }
 
     private fun remember(r: ShellRecord) {
@@ -97,6 +123,11 @@ object RootShell {
             history.addLast(r)
             while (history.size > HISTORY_MAX) history.removeFirst()
         }
+    }
+
+    /** 清空诊断页保留的命令与输出缓存。 */
+    fun clearHistory() {
+        synchronized(history) { history.clear() }
     }
 
     /** 返回执行记录快照（新 → 旧）。 */
