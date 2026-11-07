@@ -87,6 +87,7 @@ internal fun Modifier.liquidSheen(): Modifier = composed {
 
 /** Observe presses without consuming them, so switches and scrolling keep their own gestures. */
 internal fun Modifier.capillaryTouch(): Modifier = composed {
+    if (!com.zimky.coregateUS.ui.theme.LocalAppSettings.current.waterRipples) return@composed this
     val tint = MiuixTheme.colorScheme.primary
     val wave = remember { Animatable(1f) }
     var origin by remember { mutableStateOf(Offset.Zero) }

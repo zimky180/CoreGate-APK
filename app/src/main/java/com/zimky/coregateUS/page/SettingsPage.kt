@@ -241,6 +241,11 @@ fun SettingsPage(
                         setAppearance(appearance.copy(gravityGlow = it))
                     }, colors = switchColors())
                 }
+                SwitchRow(title = "水中涟漪", desc = "卡片触摸与音乐面板展开、收起时显示水波效果。") {
+                    Switch(checked = appearance.waterRipples, onCheckedChange = {
+                        setAppearance(appearance.copy(waterRipples = it))
+                    }, colors = switchColors())
+                }
                 SwitchRow(title = "直接跳过开屏动画", desc = "开启后，下次启动直接进入应用。") {
                     Switch(checked = appearance.skipStartupIntro, onCheckedChange = {
                         setAppearance(appearance.copy(skipStartupIntro = it))

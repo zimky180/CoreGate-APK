@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
                 java.time.Duration.between(it, java.time.Instant.now()).toMillis()
             } ?: 680L
             val remaining = if (scale == 0f || savedInstanceState != null) 0L
-                else ((splash.iconAnimationDuration?.toMillis() ?: 680L) * scale - elapsed).toLong().coerceIn(0L, 250L)
+                else ((splash.iconAnimationDuration?.toMillis() ?: 680L) * scale - elapsed).toLong().coerceIn(0L, 1200L)
             splash.postDelayed({
                 if (icon != null && icon.width > 0 && icon.height > 0) {
                     val location = IntArray(2)

@@ -1,4 +1,4 @@
-name: CoreGate v2.3.2 APK and Rust module
+name: CoreGate v2.3.3 animation settings
 on:
   push:
     branches: [ci-build]
@@ -17,83 +17,27 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-      - name: Install Android toolchains
+      - name: Install SDK
         run: |
-          sdkmanager "platform-tools" "build-tools;36.0.0" "ndk;27.2.12479018"
+          sdkmanager "platform-tools" "build-tools;36.0.0"
           sdkmanager "platforms;android-37.2" || sdkmanager "platforms;android-37.1" || sdkmanager "platforms;android-37.0"
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '9.3.1'
-      - name: Set up Rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustup target add aarch64-linux-android
-      - name: Test and compile Rust observer
-        run: |
-          cargo generate-lockfile --manifest-path module/daemon/Cargo.toml
-          cargo test --locked --manifest-path module/daemon/Cargo.toml
-          NDK_TOOLCHAIN="$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_TOOLCHAIN/aarch64-linux-android33-clang"
-          cargo build --locked --release --target aarch64-linux-android --manifest-path module/daemon/Cargo.toml
-          mkdir -p module/bin out
-          cp module/daemon/target/aarch64-linux-android/release/coregated module/bin/coregated
-          file module/bin/coregated
-          readelf -h module/bin/coregated | grep AArch64
-          cp module/daemon/Cargo.lock out/Cargo.lock
-      - name: Build APKs
+      - name: Build test APK
         run: gradle assembleDebug assembleRelease --no-daemon --stacktrace --console=plain
-      - name: Package APKs and module
+      - name: Prepare test APK
         run: |
-          cp app/build/outputs/apk/debug/*.apk out/CoreGate-v2.3.2-debug.apk
-          cp app/build/outputs/apk/release/*-unsigned.apk out/CoreGate-v2.3.2-release-unsigned.apk
-          for script in module/*.sh module/lib/*.sh; do sh -n "$script"; done
-          python3 - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
-          import hashlib, json, os
-          root = Path('module')
-          names = ['module.prop','customize.sh','service.sh','migrate-config.sh','uninstall.sh','action.sh','sepolicy.rule','config.example.json','packages.txt','capture.txt','update.json']
-          names += [p.relative_to(root).as_posix() for p in sorted((root/'lib').glob('*.sh'))]
-          names += ['bin/coregated']
-          assert len(names) == 22
-          artifact = Path('out/CoreGate-v2.3.2.zip')
-          with ZipFile(artifact,'w',ZIP_DEFLATED,compresslevel=9) as z:
-              for name in names:
-                  info=ZipInfo(name)
-                  info.create_system=3
-                  info.external_attr=((0o100755 if name.endswith('.sh') or name.startswith('bin/') else 0o100644)<<16)
-                  info.compress_type=ZIP_DEFLATED
-                  z.writestr(info,(root/name).read_bytes())
-          with ZipFile(artifact) as z:
-              assert z.testzip() is None
-              assert set(z.namelist())==set(names)
-          meta={'version':'2.3.2','versionCode':232,'commit':os.environ['GITHUB_SHA'],'rust_arch':'aarch64-linux-android','rust_role':'manual read-only observer; Shell remains controller','release_signed':False}
-          Path('out/BUILD_INFO.json').write_text(json.dumps(meta,indent=2)+'\n')
-          paths=sorted(p for p in Path('out').iterdir() if p.is_file())
-          Path('out/SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in paths))
-          PY
+          mkdir -p out
+          cp app/build/outputs/apk/debug/*.apk out/CoreGate-v2.3.3-debug.apk
+          cp app/build/outputs/apk/release/*-unsigned.apk out/CoreGate-v2.3.3-release-unsigned.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-v2.3.2-debug
-          path: out/CoreGate-v2.3.2-debug.apk
+          name: CoreGate-v2.3.3-release-unsigned
+          path: out/*-unsigned.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: CoreGate-v2.3.2-release-unsigned
-          path: out/CoreGate-v2.3.2-release-unsigned.apk
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: CoreGate-v2.3.2-module-arm64
-          path: out/CoreGate-v2.3.2.zip
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: CoreGate-v2.3.2-build-info
-          path: |
-            out/BUILD_INFO.json
-            out/SHA256SUMS.txt
-            out/Cargo.lock
-            app/build/outputs/mapping/release/
+          name: CoreGate-v2.3.3-debug
+          path: out/CoreGate-v2.3.3-debug.apk
           if-no-files-found: error

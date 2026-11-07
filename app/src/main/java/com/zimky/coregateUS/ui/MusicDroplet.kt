@@ -45,18 +45,19 @@ internal fun MusicDroplet(
     button: @Composable () -> Unit,
     panel: @Composable () -> Unit
 ) {
+    val waterRipples = com.zimky.coregateUS.ui.theme.LocalAppSettings.current.waterRipples
     val cs = MiuixTheme.colorScheme
     val edge = cs.onSurface.copy(alpha = 0.10f)
     val surface = lerp(color, cs.primary, 0.035f)
     val flow = remember { Animatable(if (expanded) 1f else 0f) }
     val wave = remember { Animatable(1f) }
     var firstFrame by remember { mutableStateOf(true) }
-    LaunchedEffect(expanded) {
+    LaunchedEffect(expanded, waterRipples) {
         if (firstFrame) { firstFrame = false; return@LaunchedEffect }
-        launch {
+        if (waterRipples) launch {
             wave.snapTo(0f)
             wave.animateTo(1f, tween(950, easing = LinearEasing))
-        }
+        } else wave.snapTo(1f)
         // Retarget from the current position and velocity on rapid taps.
         flow.animateTo(if (expanded) 1f else 0f,
             spring(dampingRatio = 0.92f, stiffness = 72f))
@@ -74,7 +75,7 @@ internal fun MusicDroplet(
         val origin = Offset(w - radiusSmall, h - radiusSmall)
         val reach = hypot(w, h).coerceAtLeast(1f)
         val front = p * reach * 1.16f
-        val amplitude = sin(p * Math.PI).toFloat() * rippleSize
+        val amplitude = if (waterRipples) sin(p * Math.PI).toFloat() * rippleSize else 0f
         // Sample the entire rounded perimeter so the travelling wave deforms edges,
         // rather than rocking the whole panel as one rigid object.
         val centers = listOf(Offset(w - r, r), Offset(w - r, h - r),
@@ -120,7 +121,7 @@ internal fun MusicDroplet(
             .border(0.75.dp, Brush.verticalGradient(listOf(edge, edge.copy(alpha = 0.025f))), shape)
             .drawWithContent {
                 drawContent()
-                drawCapillaryWaves(
+                if (waterRipples) drawCapillaryWaves(
                     Offset(size.width - 28.dp.toPx(), size.height - 24.dp.toPx()),
                     wave.value, cs.primary, returning = !expanded
                 )

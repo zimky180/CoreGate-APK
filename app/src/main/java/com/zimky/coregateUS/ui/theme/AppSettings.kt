@@ -45,6 +45,7 @@ data class AppSettings(
     val colorMode: ColorMode = ColorMode.MONET_SYSTEM,
     val keyColor: Int = 0xff43a047.toInt(),
     val gravityGlow: Boolean = true,
+    val waterRipples: Boolean = true,
     val skipStartupIntro: Boolean = false,
     val paletteStyle: PaletteStyle = PaletteStyle.TonalSpot,
     val colorSpec: ColorSpec.SpecVersion = ColorSpec.SpecVersion.SPEC_2021,
@@ -53,6 +54,7 @@ data class AppSettings(
         context.getSharedPreferences("appearance", 0).edit()
             .putString("mode", colorMode.name).putInt("keyColor", keyColor)
             .putBoolean("gravityGlow", gravityGlow)
+            .putBoolean("waterRipples", waterRipples)
             .putBoolean("skipStartupIntro", skipStartupIntro).apply()
     }
     companion object {
@@ -62,6 +64,7 @@ data class AppSettings(
                 .getOrDefault(ColorMode.MONET_SYSTEM)
             return AppSettings(colorMode = mode, keyColor = prefs.getInt("keyColor", 0xff43a047.toInt()),
                 gravityGlow = prefs.getBoolean("gravityGlow", true),
+                waterRipples = prefs.getBoolean("waterRipples", true),
                 skipStartupIntro = prefs.getBoolean("skipStartupIntro", false))
         }
     }
