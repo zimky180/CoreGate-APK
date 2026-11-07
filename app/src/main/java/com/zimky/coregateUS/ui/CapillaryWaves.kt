@@ -36,10 +36,10 @@ internal fun DrawScope.drawCapillaryWaves(
             drawCircle(tint.copy(alpha = 0.035f * attenuation), radius, origin,
                 style = Stroke((4f * density)))
             drawCircle(Color.White.copy(alpha = 0.19f * attenuation), radius, origin,
-                style = Stroke(0.7f.dpToPx()))
+                style = Stroke((0.7f * density)))
             drawCircle(tint.copy(alpha = 0.12f * attenuation),
-                (radius - 1.4f.dpToPx()).coerceAtLeast(0f), origin,
-                style = Stroke(0.9f.dpToPx()))
+                (radius - (1.4f * density)).coerceAtLeast(0f), origin,
+                style = Stroke((0.9f * density)))
         }
     }
 }
