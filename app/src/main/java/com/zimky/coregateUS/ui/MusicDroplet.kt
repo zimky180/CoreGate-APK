@@ -10,6 +10,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
@@ -27,6 +32,9 @@ import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import kotlin.math.sin
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.exp
 
 /** A single anchored surface; content stays measured while the surface flows home. */
 @Composable
@@ -41,15 +49,20 @@ internal fun MusicDroplet(
     val edge = cs.onSurface.copy(alpha = 0.10f)
     val surface = lerp(color, cs.primary, 0.035f)
     val flow = remember { Animatable(if (expanded) 1f else 0f) }
+    val wave = remember { Animatable(1f) }
+    var firstFrame by remember { mutableStateOf(true) }
     LaunchedEffect(expanded) {
+        if (firstFrame) { firstFrame = false; return@LaunchedEffect }
+        launch {
+            wave.snapTo(0f)
+            wave.animateTo(1f, tween(950, easing = LinearEasing))
+        }
         // Retarget from the current position and velocity on rapid taps.
         flow.animateTo(if (expanded) 1f else 0f,
-            spring(dampingRatio = 0.78f, stiffness = 115f))
+            spring(dampingRatio = 0.92f, stiffness = 72f))
     }
     val raw = flow.value
     val p = raw.coerceIn(0f, 1f)
-    val swell = sin(p * Math.PI).toFloat()
-    val ripple = sin(p * Math.PI * 2.0).toFloat() * swell
     val density = LocalDensity.current
     val radiusSmall = with(density) { 24.dp.toPx() }
     val radiusLarge = with(density) { 22.dp.toPx() }
@@ -57,17 +70,42 @@ internal fun MusicDroplet(
     val shape = GenericShape { size, _ ->
         val w = size.width
         val h = size.height
-        val r = (radiusSmall * (1f - p) + radiusLarge * p).coerceAtMost(h / 2f)
-        val bow = ripple * rippleSize
-        moveTo(r, 0f)
-        cubicTo(w * 0.38f, bow, w * 0.72f, -bow, w - r, 0f)
-        cubicTo(w, 0f, w, 0f, w, r)
-        cubicTo(w - bow, h * 0.4f, w + bow, h * 0.65f, w, h - r)
-        cubicTo(w, h, w, h, w - r, h)
-        cubicTo(w * 0.65f, h - bow, w * 0.35f, h + bow, r, h)
-        cubicTo(0f, h, 0f, h, 0f, h - r)
-        cubicTo(bow, h * 0.65f, -bow, h * 0.35f, 0f, r)
-        cubicTo(0f, 0f, 0f, 0f, r, 0f)
+        val r = (radiusSmall * (1f - p) + radiusLarge * p).coerceAtMost(minOf(w, h) / 2f)
+        val origin = Offset(w - radiusSmall, h - radiusSmall)
+        val reach = hypot(w, h).coerceAtLeast(1f)
+        val front = p * reach * 1.16f
+        val amplitude = sin(p * Math.PI).toFloat() * rippleSize
+        // Sample the entire rounded perimeter so the travelling wave deforms edges,
+        // rather than rocking the whole panel as one rigid object.
+        val centers = listOf(Offset(w - r, r), Offset(w - r, h - r),
+            Offset(r, h - r), Offset(r, r))
+        var first = true
+        fun point(x: Float, y: Float, nx: Float, ny: Float) {
+            val distance = hypot(x - origin.x, y - origin.y)
+            val lag = distance - front
+            val wave = sin(lag / (10f * density.density)) *
+                exp(-lag * lag / (reach * reach * 0.055f)) * amplitude
+            val px = (x + nx * wave).coerceIn(0f, w)
+            val py = (y + ny * wave).coerceIn(0f, h)
+            if (first) { moveTo(px, py); first = false } else lineTo(px, py)
+        }
+        centers.forEachIndexed { corner, c ->
+            val start = -Math.PI / 2.0 + corner * Math.PI / 2.0
+            for (i in 0..12) {
+                val angle = start + i / 12.0 * Math.PI / 2.0
+                val nx = cos(angle).toFloat()
+                val ny = sin(angle).toFloat()
+                point(c.x + nx * r, c.y + ny * r, nx, ny)
+            }
+            val end = start + Math.PI / 2.0
+            val nx = cos(end).toFloat(); val ny = sin(end).toFloat()
+            val next = centers[(corner + 1) % 4]
+            for (i in 1..16) {
+                val t = i / 16f
+                point(c.x + nx * r + (next.x - c.x) * t,
+                    c.y + ny * r + (next.y - c.y) * t, nx, ny)
+            }
+        }
         close()
     }
     Layout(
@@ -76,13 +114,20 @@ internal fun MusicDroplet(
                 this.shape = shape
                 clip = true
                 transformOrigin = TransformOrigin(1f, 1f)
-                rotationZ = ripple * 0.65f
+                rotationZ = 0f
                 scaleY = 1f + (raw - p) * 0.12f
             }.background(surface.copy(alpha = 0.98f)).liquidSheen()
-            .border(0.75.dp, Brush.verticalGradient(listOf(edge, edge.copy(alpha = 0.025f))), shape),
+            .border(0.75.dp, Brush.verticalGradient(listOf(edge, edge.copy(alpha = 0.025f))), shape)
+            .drawWithContent {
+                drawContent()
+                drawCapillaryWaves(
+                    Offset(size.width - 28.dp.toPx(), size.height - 24.dp.toPx()),
+                    wave.value, cs.primary, returning = !expanded
+                )
+            },
         content = {
-            Box(Modifier.pointerInput(expanded) {
-                if (!expanded) awaitPointerEventScope {
+            Box(Modifier.pointerInput(expanded, p >= 0.92f) {
+                if (!expanded || p < 0.92f) awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         event.changes.forEach { it.consume() }

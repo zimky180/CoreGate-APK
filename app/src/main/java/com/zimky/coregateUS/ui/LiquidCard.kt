@@ -7,6 +7,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -26,7 +31,7 @@ fun LiquidCard(
     content: @Composable BoxScope.() -> Unit
 ) {
     MiuixCard(modifier = modifier, cornerRadius = cornerRadius) {
-        Box(Modifier.liquidSheen(), content = content)
+        Box(Modifier.liquidSheen().capillaryTouch(), content = content)
     }
 }
 
@@ -56,5 +61,32 @@ internal fun Modifier.liquidSheen(): Modifier = composed {
                 ), radius = radius, center = center)
             }
         }
+    }
+}
+
+/** Observe presses without consuming them, so switches and scrolling keep their own gestures. */
+internal fun Modifier.capillaryTouch(): Modifier = composed {
+    val tint = MiuixTheme.colorScheme.primary
+    val wave = remember { Animatable(1f) }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val scope = rememberCoroutineScope()
+    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    clipToBounds().pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                event.changes.firstOrNull { it.pressed && !it.previousPressed }?.let { press ->
+                    origin = press.position
+                    job?.cancel()
+                    job = scope.launch {
+                        wave.snapTo(0f)
+                        wave.animateTo(1f, tween(1100, easing = LinearEasing))
+                    }
+                }
+            }
+        }
+    }.drawWithContent {
+        drawContent()
+        drawCapillaryWaves(origin, wave.value, tint, intensity = 0.65f)
     }
 }
