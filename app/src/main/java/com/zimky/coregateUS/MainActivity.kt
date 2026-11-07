@@ -109,6 +109,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 class MainActivity : ComponentActivity() {
     private var introIconBounds: androidx.compose.ui.geometry.Rect? = null
     private var systemIntroComplete by mutableStateOf(false)
+    private var introIconDrawn = false
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,19 +135,41 @@ class MainActivity : ComponentActivity() {
                     systemIntroComplete = true
                     splash.remove()
                 } else {
+                    // Map the drawable viewport through ImageView's real matrix, including
+                    // the platform's FIT_CENTER scale and padding, before moving the View.
+                    val local = android.graphics.RectF(0f, 0f, icon.width.toFloat(), icon.height.toFloat())
+                    if (icon is android.widget.ImageView) {
+                        icon.drawable?.let { drawable ->
+                            local.set(drawable.bounds)
+                            icon.imageMatrix.mapRect(local)
+                            local.offset(icon.paddingLeft.toFloat(), icon.paddingTop.toFloat())
+                        }
+                    }
                     val location = IntArray(2)
                     icon.getLocationOnScreen(location)
+                    val sx = target.width / local.width().coerceAtLeast(1f)
+                    val sy = target.height / local.height().coerceAtLeast(1f)
+                    icon.pivotX = local.centerX()
+                    icon.pivotY = local.centerY()
                     icon.animate()
-                        .translationX(target.center.x - location[0] - icon.width / 2f)
-                        .translationY(target.center.y - location[1] - icon.height / 2f)
-                        .scaleX(target.width / icon.width)
-                        .scaleY(target.height / icon.height)
+                        .translationX(icon.translationX + target.center.x - location[0] - local.centerX())
+                        .translationY(icon.translationY + target.center.y - location[1] - local.centerY())
+                        .scaleX(sx)
+                        .scaleY(sy)
                         .setDuration((280L * scale).toLong())
                         .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
                         .withEndAction {
                             systemIntroComplete = true
-                            // Let Compose draw its matching icon before detaching the overlay.
-                            splash.postOnAnimation { splash.postOnAnimation { splash.remove() } }
+                            // Wait for the actual Compose draw, not a fixed number of VSYNCs.
+                            val deadline = android.os.SystemClock.uptimeMillis() + 500L
+                            val finish = object : Runnable {
+                                override fun run() {
+                                    if (introIconDrawn || android.os.SystemClock.uptimeMillis() >= deadline) {
+                                        splash.postOnAnimation { splash.remove() }
+                                    } else splash.postOnAnimation(this)
+                                }
+                            }
+                            splash.postOnAnimation(finish)
                         }.start()
                 }
             }, remaining)
@@ -202,6 +225,7 @@ class MainActivity : ComponentActivity() {
                 StartupIntro(
                     started = systemIntroComplete,
                     onIconBounds = { introIconBounds = it },
+                    onIconDrawn = { introIconDrawn = true },
                     onFinished = { introVisible = false }
                 )
             }

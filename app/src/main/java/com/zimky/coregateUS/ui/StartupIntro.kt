@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -108,6 +109,7 @@ private class IntroArtwork {
 fun StartupIntro(
     started: Boolean = true,
     onIconBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {},
+    onIconDrawn: () -> Unit = {},
     onFinished: () -> Unit
 ) {
     val clock = remember { Animatable(0f) }
@@ -185,7 +187,11 @@ fun StartupIntro(
                     scaleY = scaleX
                 }) {
                     // Black system splash and transparent foreground share the same artwork.
-                    Image(painterResource(R.drawable.ic_launcher_foreground), "CoreGate 图标", Modifier.fillMaxSize())
+                    Image(painterResource(R.drawable.ic_launcher_foreground), "CoreGate 图标",
+                        Modifier.fillMaxSize().drawWithContent {
+                            drawContent()
+                            if (started) onIconDrawn()
+                        })
                 }
                 Canvas(Modifier.fillMaxSize()) {
                     val sweep = phase(t, 0f, 0.29f)
