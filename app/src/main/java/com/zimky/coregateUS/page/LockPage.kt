@@ -1,5 +1,9 @@
 package com.zimky.coregateUS.page
 
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -93,8 +97,9 @@ fun LockPage(
     onRefresh: () -> Unit,
     save: (CoreConfig, String?, ((Boolean, String) -> Unit)?) -> Unit,
     frozenCount: Int? = null,
-    onOpenFreeze: () -> Unit = {}
+    onOpenFreeze: (Rect) -> Unit = {}
 ) {
+    var freezeOrigin by remember { mutableStateOf(Rect.Zero) }
     val cs = MiuixTheme.colorScheme
     val s = snapshot
     val daemonAlive = s?.daemonAlive == true
@@ -313,7 +318,8 @@ fun LockPage(
                         0 -> "当前没有冻结任何服务"
                         else -> "已冻结 $frozenCount 个服务"
                     },
-                    onClick = onOpenFreeze
+                    modifier = Modifier.onGloballyPositioned { freezeOrigin = it.boundsInRoot() },
+                    onClick = { onOpenFreeze(freezeOrigin) }
                 )
             }
         }
@@ -409,6 +415,7 @@ fun LockPage(
 /** 柔和状态胶囊，文字保持稳定可读。 */
 @Composable
 private fun StateBadge(text: String, color: Color) {
+    var freezeOrigin by remember { mutableStateOf(Rect.Zero) }
     val cs = MiuixTheme.colorScheme
     Row(Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(50.dp))
         .background(color.copy(alpha = 0.10f))

@@ -35,7 +35,7 @@ internal val contributorProfiles = listOf(
         qq = "2408646386", avatarRes = R.drawable.contributor_dongan),
     AuthorProfile("tester-canghai", "沧海", "测试贡献 · 问题反馈\n参与测试版体验，提供宝贵的 Bug 反馈，帮助发现问题并完善使用体验。",
         qq = "3560356758", avatarRes = R.drawable.contributor_canghai),
-    AuthorProfile("tester-jiekai", "解开超载的心", "测试贡献 · 问题反馈\n参与测试版体验，提供宝贵的 Bug 反馈，帮助发现问题并完善使用体验。",
+    AuthorProfile("tester-jiekai", "解开超载的心", "核心建议 · 游戏场景锁核\n提出很多有价值的建议，促成游戏场景自定义大核锁核功能；多次反馈 Bug，并及时指出过影响严重的问题，帮助项目排查隐患、完善稳定性。", 
         qq = "3543500780", avatarRes = R.drawable.contributor_jiekai),
     AuthorProfile("tester-doze", "doze", "测试贡献 · 问题反馈\n参与测试版体验，提供宝贵的 Bug 反馈，帮助发现问题并完善使用体验。",
         qq = "1542101707", avatarRes = R.drawable.contributor_doze),

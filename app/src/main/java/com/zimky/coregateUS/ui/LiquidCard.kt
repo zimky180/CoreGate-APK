@@ -44,7 +44,8 @@ internal fun Modifier.liquidSheen(): Modifier = composed {
     // Use the actual accent seed rather than a muted tonal primary. Keep the
     // light visible against both light and dark cards for every accent.
     val tint = if (appearance.keyColor != 0) Color(appearance.keyColor) else cs.primary
-    val glowAlpha = if (cs.surfaceContainer.luminance() < 0.35f) 0.24f else 0.19f
+    val accentBoost = if (appearance.keyColor == 0xff43a047.toInt() || appearance.keyColor == 0xff8e65d3.toInt()) 1.16f else 1f
+    val glowAlpha = (if (cs.surfaceContainer.luminance() < 0.35f) 0.24f else 0.19f) * accentBoost
     val gravity = rememberLiquidGravity()
     val position = remember { floatArrayOf(0.5f, 0.08f) }
     val frameTime = remember { longArrayOf(0L) }

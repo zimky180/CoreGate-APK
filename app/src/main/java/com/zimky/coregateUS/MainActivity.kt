@@ -289,6 +289,7 @@ private fun AppRoot() {
 
     // 当前展开的二级页；SubPage.NONE 表示停在四栏主界面
     var subPage by rememberSaveable { mutableStateOf(SubPage.NONE) }
+    var subPageOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
     // 策略页要显示的「冻结了多少个」，由二级页与后台探测回报。
     // null = 还没探到（主页与策略页都会显示「还没探到」），0 是有效结果，不能和 null 混。
@@ -441,7 +442,7 @@ private fun AppRoot() {
         val intended = newCfg.copy(loaded = true)
         cfg = intended
         val cmd = CoreConfig.buildSaveCmd(newCfg, packages)
-        RootShell.exec(cmd) { code, out, err ->
+        RootShell.execSave(cmd) { code, out, err ->
             pendingSaves -= 1
             val ok = code == 0 && out.lineSequence().any { it.trim() == "OK" }
             if (ok) {
@@ -545,7 +546,7 @@ private fun AppRoot() {
                         onRefresh = { refresh(true) },
                         save = ::save,
                         frozenCount = frozenCount,
-                        onOpenFreeze = { subPage = SubPage.FREEZE }
+                        onOpenFreeze = { origin -> subPageOrigin = origin; subPage = SubPage.FREEZE }
                     )
                 }
                 PageSlot(visible = currentTab == 1) {
@@ -557,7 +558,7 @@ private fun AppRoot() {
                         onRefresh = { refresh(true) },
                         save = ::save,
                         frozenCount = frozenCount,
-                        onOpenFreeze = { subPage = SubPage.FREEZE }
+                        onOpenFreeze = { origin -> subPageOrigin = origin; subPage = SubPage.FREEZE }
                     )
                 }
                 PageSlot(visible = currentTab == 2) {
@@ -575,11 +576,9 @@ private fun AppRoot() {
                 //   所以这里在 PageSlot 之外单独一层，用 zIndex(2f) 压住可见页（可见页是 1f）。
                 //
                 // 二级页同样铺满全屏，状态栏留白由页内滚动内容提供。
-                androidx.compose.animation.AnimatedVisibility(
+                com.zimky.coregateUS.ui.LiquidReveal(
                     visible = subPage != SubPage.NONE,
-                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)) +
-                        androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(240)) { it / 8 },
-                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140)),
+                    origin = subPageOrigin,
                     modifier = Modifier.zIndex(2f)
                 ) {
                     // 二级页必须是「完完全全的第二屏」。
@@ -603,8 +602,7 @@ private fun AppRoot() {
                                 indication = null
                             ) {}
                     ) {
-                        when (subPage) {
-                            SubPage.FREEZE -> FreezePage(
+                        FreezePage(
                                 cfg = cfg,
                                 sh = RootShell,
                                 onBack = { closeSubPage() },
@@ -614,7 +612,6 @@ private fun AppRoot() {
                                     loadConfig()
                                 }
                             )
-                        }
                     }
                 }
             }

@@ -1,5 +1,11 @@
 package com.zimky.coregateUS.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.provider.OpenableColumns
@@ -45,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -294,6 +299,7 @@ fun BoxScope.HomeMusicPlayer() {
     val scope = rememberCoroutineScope()
     val history = remember { mutableStateListOf<String>() }
     var showQueue by remember { mutableStateOf(false) }
+    var queueOrigin by remember { mutableStateOf(Rect.Zero) }
     var edit by remember { mutableStateOf(false) }
     var returnToQueue by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
@@ -423,7 +429,7 @@ fun BoxScope.HomeMusicPlayer() {
             color = cs.surfaceContainerHigh,
             onExpand = { expanded = true },
             button = {
-                Text(if (stream.playing) "‹ ♫" else "‹ ♪", color = cs.primary, fontSize = 20.sp)
+                Text(if (stream.playing) "♫" else "♪", color = cs.primary, fontSize = 20.sp)
             }
         ) {
                 Column(Modifier.width(280.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -455,7 +461,7 @@ fun BoxScope.HomeMusicPlayer() {
                             if (selected == null) { returnToQueue = false; editingId = null; edit = true } else stream.toggle(selected.url)
                         }
                         MusicTransportButton("next", "随机下一首", tracks.size > 1) { step(1) }
-                        TextButton("歌单", onClick = {
+                        TextButton("歌单", modifier = Modifier.onGloballyPositioned { queueOrigin = it.boundsInRoot() }, onClick = {
                             edit = false
                             returnToQueue = false
                             editingId = null
@@ -465,12 +471,16 @@ fun BoxScope.HomeMusicPlayer() {
                 }
         }
     }
-    // A single window owns queue/editor navigation, including Android Back.
-    if (showQueue || edit) {
-        Dialog(onDismissRequest = {
-            if (edit) closeEditor() else showQueue = false
-        }) {
-            Card(Modifier.fillMaxWidth()) {
+    // Queue and editor share one animated surface and Android Back handler.
+    BackHandler(enabled = showQueue || edit) { if (edit) closeEditor() else showQueue = false }
+    LiquidReveal(visible = showQueue || edit, origin = queueOrigin,
+        modifier = Modifier.align(Alignment.Center)) {
+        Box(Modifier.fillMaxSize().background(cs.onSurface.copy(alpha = 0.18f))
+            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null) { if (edit) closeEditor() else showQueue = false },
+            contentAlignment = Alignment.Center) {
+            Card(Modifier.padding(24.dp).widthIn(max = 360.dp).fillMaxWidth()
+                .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}) {
                 if (edit) {
                     val original = tracks.firstOrNull { it.id == editingId }
                     var draftUrl by remember(editingId) { mutableStateOf(original?.url.orEmpty()) }
@@ -527,11 +537,13 @@ fun BoxScope.HomeMusicPlayer() {
                 if (tracks.isEmpty()) Text("添加歌曲后，即可使用上一首和下一首。", color = cs.onSurfaceVariantSummary, fontSize = 13.sp)
                 tracks.forEachIndexed { index, item ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable {
+                        Column(Modifier.weight(1f).clip(CircleShape).combinedClickable(onLongClick = {
+                            returnToQueue = true; editingId = item.id; showQueue = false; edit = true
+                        }, onClick = {
                             val old = tracks.indexOfFirst { it.id == track?.id }
                             select(item, if (index >= old) 1 else -1)
                             showQueue = false
-                        }.padding(vertical = 10.dp)) {
+                        }).padding(horizontal = 14.dp, vertical = 10.dp)) {
                             Text((if (item.id == track?.id) "♪ " else "") + item.title,
                                 color = if (item.id == track?.id) cs.primary else cs.onSurface, fontSize = 15.sp)
                             Text(item.artist.ifBlank { "未填写歌手" }, color = cs.onSurfaceVariantSummary, fontSize = 12.sp)

@@ -35,7 +35,7 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
 
-/** 电池温度策略；高温额外锁核跳过游戏，配置交由模块执行。 */
+/** 游戏与电池温度场景，配置交由模块执行。 */
 @Composable
 internal fun TemperaturePolicyCard(
     cfg: CoreConfig,
@@ -47,7 +47,11 @@ internal fun TemperaturePolicyCard(
     val focus = LocalFocusManager.current
     var thresholdText by remember { mutableStateOf(cfg.temperatureThreshold.toString()) }
     var focused by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
+    var pending by remember { mutableIntStateOf(0) }
+    val busy = pending > 0
+    var gameDraft by remember(cfg.gameLockCores) {
+        mutableStateOf(cfg.gameLockCores.split(',').mapNotNull { it.toIntOrNull() }.toSet())
+    }
     var extraDraft by remember(cfg.temperatureLockCores) {
         mutableStateOf(CoreConfig.normalizeTemperatureCores(cfg.temperatureLockCores).split(',').mapNotNull { it.toIntOrNull() }.toSet())
     }
@@ -55,15 +59,16 @@ internal fun TemperaturePolicyCard(
         if (!focused) thresholdText = cfg.temperatureThreshold.toString()
     }
     fun persist(next: CoreConfig) {
-        if (busy || !cfg.loaded) return
-        busy = true
+        if (!cfg.loaded) return
+        pending += 1
+        Toaster.show("正在保存场景策略…")
         save(next, null) { ok, msg ->
-            busy = false
-            Toaster.show(if (ok) "温度策略已保存" else "保存失败：$msg", !ok)
+            pending -= 1
+            if (!ok || pending == 0) Toaster.show(if (ok) "场景策略已保存" else "保存失败：$msg", !ok)
         }
     }
     fun commitThreshold() {
-        if (busy || !cfg.loaded) return
+        if (!cfg.loaded) return
         val threshold = CoreConfig.clampTemperature(thresholdText.toIntOrNull() ?: 40)
         thresholdText = threshold.toString()
         if (threshold != cfg.temperatureThreshold) persist(cfg.copy(temperatureThreshold = threshold))
@@ -84,7 +89,6 @@ internal fun TemperaturePolicyCard(
         !fresh -> "等待模块更新"
         !sourceMatches -> "请更新配套模块"
         !matches || parts.getOrNull(6) != cfg.temperatureLockCores -> "等待策略同步"
-        parts[0] == "game_skipped" -> "游戏中，跳过高温锁核"
         parts[0] == "scene_skipped" -> "自动恢复中，暂停额外锁核"
         parts[0] == "no_extra" -> "尚未选择额外核心"
         parts[0] == "active" -> "已触发"
@@ -95,14 +99,35 @@ internal fun TemperaturePolicyCard(
     val temp = if (fresh && sourceMatches && cfg.temperatureEnabled) parts.getOrNull(1)?.toIntOrNull() else null
     val surface by rememberUpdatedState(cs.surfaceContainer)
     val backdrop = rememberLayerBackdrop { drawRect(surface) }
-    val available = cfg.loaded && !busy
+    val available = cfg.loaded
 
-    SectionHeading("温度策略", "按电池温度调整核心")
+    SectionHeading("场景策略", "游戏保持锁核与电池温度策略")
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("游戏保持锁核", color = cs.onSurface, fontSize = 14.sp)
+            SubText("进入名单内游戏后，只保持下方选中的核心封锁，替代主页名单。例如日常锁 CPU6、7，游戏只选 CPU7，进入游戏便解封 CPU6。")
+            val gameCores = snapshot?.cores.orEmpty().sortedBy { it.id }.filter { it.id > 0 }
+            if (gameCores.isEmpty()) HintText("等待读取核心列表后可自定义。")
+            gameCores.chunked(4).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { core ->
+                        val selected = core.id in gameDraft
+                        TextButton(text = "CPU${core.id}${if (selected) " ✓" else ""}",
+                            enabled = available, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.textButtonColors(textColor = if (selected) cs.primary else cs.onSurfaceVariantSummary),
+                            onClick = { gameDraft = if (selected) gameDraft - core.id else gameDraft + core.id })
+                    }
+                }
+            }
+            SubText("已保存的游戏核心：${cfg.gameLockCores.ifBlank { "未选择（游戏时全部解封）" }}")
+            TextButton(text = "保存游戏核心", enabled = available && gameDraft.sorted().joinToString(",") != cfg.gameLockCores,
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                onClick = { persist(cfg.copy(gameLockCores = gameDraft.sorted().joinToString(","))) })
+            HintText("此项独立于温度开关。少开一颗大核可能降低游戏性能；游戏内撤销日常限频，高温额外锁核仍叠加在游戏名单之上。录屏/相机恢复、充电恢复及高温解封优先。")
+            HairLine()
             SwitchRow(
                 title = "启用温度策略",
-                desc = "达到阈值时执行所选动作，降温后恢复日常策略。",
+                desc = "达到阈值时执行所选动作，降温后恢复当前场景策略。",
                 trailing = {
                     Switch(checked = cfg.temperatureEnabled, enabled = available,
                         colors = SwitchDefaults.colors(
@@ -150,7 +175,7 @@ internal fun TemperaturePolicyCard(
             }
             SubText(if (cfg.temperatureMode == "unlock")
                 "达到阈值后恢复全部核心并撤销 CoreGate 限频；这项选择不保证降低温度。"
-                else "达到阈值后，在日常封锁之外额外封锁下方选中的核心；降温后仅撤销额外封锁。名单内游戏运行时跳过，避免高温打断游戏性能。")
+                else "达到阈值后，在当前场景名单之外额外封锁下方选中的核心；降温后仅撤销额外封锁。游戏自定义名单生效时同样叠加。")
             HintText("使用 Android 电池温度口径，与 CPU / SoC 热点温度不同；不同工具的刷新时间可能造成少量差异。")
             if (cfg.temperatureMode == "lock") {
                 Text("高温额外锁核", color = cs.onSurface, fontSize = 14.sp)
@@ -200,7 +225,7 @@ internal fun TemperaturePolicyCard(
             }
             HintText("35～60℃，默认 40℃。降至阈值以下 3℃时退出温度策略，按轮询间隔检测。")
             HintText(if (cfg.temperatureMode == "lock")
-                "高温额外锁核仅在日常锁核场景执行，游戏、已开启的录屏/相机恢复及充电恢复优先。游戏须加入游戏名单且被识别；前台识别失败时无法保证跳过。未选额外核心时不新增封锁。"
+                "高温额外锁核叠加于日常或游戏自定义名单；未设置游戏名单时保持游戏全解封。已开启的录屏/相机恢复及充电恢复优先，未选额外核心时不新增封锁。"
                 else "高温解封恢复全部核心并撤销限频；总开关与安全模式优先。")
             HintText("读取不到有效电池温度时撤销温度策略；系统自身温控继续生效。配置由守护进程执行，关闭 App 后仍生效。")
         }
