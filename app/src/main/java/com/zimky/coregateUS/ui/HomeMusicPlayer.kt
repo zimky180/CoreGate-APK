@@ -247,7 +247,13 @@ fun BoxScope.HomeMusicPlayer() {
     val history = remember { mutableStateListOf<String>() }
     var showQueue by remember { mutableStateOf(false) }
     var edit by remember { mutableStateOf(false) }
+    var returnToQueue by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
+    fun closeEditor() {
+        edit = false
+        showQueue = returnToQueue
+        returnToQueue = false
+    }
     val owner = LocalLifecycleOwner.current
     val cs = MiuixTheme.colorScheme
     fun persist(list: List<HomeTrack>, id: String?) {
@@ -360,7 +366,7 @@ fun BoxScope.HomeMusicPlayer() {
     Box(Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = PAGE_BOTTOM_INSET + 8.dp)) {
         MusicDroplet(
             expanded = expanded,
-            color = cs.surface,
+            color = cs.surfaceContainerHigh,
             onExpand = { expanded = true },
             button = {
                 Text(if (stream.playing) "‹ ♫" else "‹ ♪", color = cs.primary, fontSize = 20.sp)
@@ -373,7 +379,7 @@ fun BoxScope.HomeMusicPlayer() {
                                 (slideInHorizontally(tween(280)) { it * direction / 3 } + fadeIn(tween(220))) togetherWith
                                     (slideOutHorizontally(tween(240)) { -it * direction / 3 } + fadeOut(tween(160)))
                             }, label = "musicTrack") { item ->
-                            Column(Modifier.fillMaxWidth().clickable { editingId = item?.id; edit = true }) {
+                            Column(Modifier.fillMaxWidth().clickable { returnToQueue = false; editingId = item?.id; edit = true }) {
                                 Text(item?.title?.ifBlank { "未命名歌曲" } ?: "随身听", color = cs.onSurface,
                                     fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -392,7 +398,7 @@ fun BoxScope.HomeMusicPlayer() {
                         MusicTransportButton(if (stream.loading) "cancel" else if (stream.playing) "pause" else "play",
                             if (stream.loading) "取消加载" else if (stream.playing) "暂停" else "播放", true) {
                             val selected = track
-                            if (selected == null) { editingId = null; edit = true } else stream.toggle(selected.url)
+                            if (selected == null) { returnToQueue = false; editingId = null; edit = true } else stream.toggle(selected.url)
                         }
                         MusicTransportButton("next", "随机下一首", tracks.size > 1) { step(1) }
                         TextButton("歌单", onClick = { showQueue = true })
@@ -400,40 +406,18 @@ fun BoxScope.HomeMusicPlayer() {
                 }
         }
     }
-    if (showQueue) Dialog(onDismissRequest = { showQueue = false }) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("我的歌单 · ${tracks.size}", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                if (tracks.isEmpty()) Text("添加歌曲后，即可使用上一首和下一首。", color = cs.onSurfaceVariantSummary, fontSize = 13.sp)
-                tracks.forEachIndexed { index, item ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable {
-                            val old = tracks.indexOfFirst { it.id == track?.id }
-                            select(item, if (index >= old) 1 else -1)
-                            showQueue = false
-                        }.padding(vertical = 10.dp)) {
-                            Text((if (item.id == track?.id) "♪ " else "") + item.title,
-                                color = if (item.id == track?.id) cs.primary else cs.onSurface, fontSize = 15.sp)
-                            Text(item.artist.ifBlank { "未填写歌手" }, color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
-                        }
-                        TextButton("编辑", onClick = { editingId = item.id; showQueue = false; edit = true })
-                    }
-                }
-                TextButton("添加网络歌曲", onClick = { editingId = null; showQueue = false; edit = true })
-                TextButton("导入本地音乐", onClick = { showQueue = false; localPicker.launch(arrayOf("audio/*")) })
-                TextButton("关闭", onClick = { showQueue = false })
-            }
-        }
-    }
-    if (edit) {
-        val original = tracks.firstOrNull { it.id == editingId }
-        var draftUrl by remember(editingId) { mutableStateOf(original?.url.orEmpty()) }
-        var draftTitle by remember(editingId) { mutableStateOf(original?.title.orEmpty()) }
-        var draftArtist by remember(editingId) { mutableStateOf(original?.artist.orEmpty()) }
-        var error by remember { mutableStateOf("") }
-        Dialog(onDismissRequest = { edit = false }) {
+    // A single window owns queue/editor navigation, including Android Back.
+    if (showQueue || edit) {
+        Dialog(onDismissRequest = {
+            if (edit) closeEditor() else showQueue = false
+        }) {
             Card(Modifier.fillMaxWidth()) {
+                if (edit) {
+                    val original = tracks.firstOrNull { it.id == editingId }
+                    var draftUrl by remember(editingId) { mutableStateOf(original?.url.orEmpty()) }
+                    var draftTitle by remember(editingId) { mutableStateOf(original?.title.orEmpty()) }
+                    var draftArtist by remember(editingId) { mutableStateOf(original?.artist.orEmpty()) }
+                    var error by remember(editingId) { mutableStateOf("") }
                 Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(if (original == null) "添加歌曲" else "编辑歌曲", color = cs.onSurface,
@@ -446,16 +430,16 @@ fun BoxScope.HomeMusicPlayer() {
                     if (original?.url?.startsWith("asset:///") != true && original?.url?.startsWith("content://") != true)
                         MusicInput(draftUrl, { draftUrl = it.take(4096); error = "" }, "https://… 音频地址")
                     if (original == null) TextButton("导入本地音乐", onClick = {
-                        edit = false; localPicker.launch(arrayOf("audio/*"))
+                        edit = false; returnToQueue = false; showQueue = false; localPicker.launch(arrayOf("audio/*"))
                     })
                     if (error.isNotBlank()) Text(error, color = cs.error, fontSize = 12.sp)
                     if (original != null) TextButton("从歌单移除", onClick = {
                         val list = tracks.filterNot { it.id == original.id }
                         if (track?.id == original.id) { stream.reset(); currentId = list.firstOrNull()?.id }
-                        tracks = list; persist(list, currentId); edit = false
+                        tracks = list; persist(list, currentId); closeEditor()
                     })
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton("取消", onClick = { edit = false })
+                        TextButton("取消", onClick = { closeEditor() })
                         TextButton("保存", onClick = {
                             val candidate = draftUrl.trim()
                             val uri = Uri.parse(candidate)
@@ -472,10 +456,34 @@ fun BoxScope.HomeMusicPlayer() {
                                 if (track?.id == item.id && track.url != candidate) stream.reset()
                                 tracks = list
                                 persist(list, currentId ?: list.firstOrNull()?.id)
-                                edit = false
+                                closeEditor()
                             }
                         })
                     }
+                }
+                } else {
+            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("我的歌单 · ${tracks.size}", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                if (tracks.isEmpty()) Text("添加歌曲后，即可使用上一首和下一首。", color = cs.onSurfaceVariantSummary, fontSize = 13.sp)
+                tracks.forEachIndexed { index, item ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable {
+                            val old = tracks.indexOfFirst { it.id == track?.id }
+                            select(item, if (index >= old) 1 else -1)
+                            showQueue = false
+                        }.padding(vertical = 10.dp)) {
+                            Text((if (item.id == track?.id) "♪ " else "") + item.title,
+                                color = if (item.id == track?.id) cs.primary else cs.onSurface, fontSize = 15.sp)
+                            Text(item.artist.ifBlank { "未填写歌手" }, color = cs.onSurfaceVariantSummary, fontSize = 12.sp)
+                        }
+                        TextButton("编辑", onClick = { returnToQueue = true; editingId = item.id; showQueue = false; edit = true })
+                    }
+                }
+                TextButton("添加网络歌曲", onClick = { returnToQueue = true; editingId = null; showQueue = false; edit = true })
+                TextButton("导入本地音乐", onClick = { showQueue = false; localPicker.launch(arrayOf("audio/*")) })
+                TextButton("关闭", onClick = { showQueue = false })
+            }
                 }
             }
         }

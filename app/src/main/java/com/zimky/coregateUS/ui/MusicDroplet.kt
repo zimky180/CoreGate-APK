@@ -10,6 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.ui.graphics.TransformOrigin
@@ -33,6 +37,9 @@ internal fun MusicDroplet(
     button: @Composable () -> Unit,
     panel: @Composable () -> Unit
 ) {
+    val cs = MiuixTheme.colorScheme
+    val edge = cs.onSurface.copy(alpha = 0.10f)
+    val surface = lerp(color, cs.primary, 0.035f)
     val flow = remember { Animatable(if (expanded) 1f else 0f) }
     LaunchedEffect(expanded) {
         // Retarget from the current position and velocity on rapid taps.
@@ -64,14 +71,15 @@ internal fun MusicDroplet(
         close()
     }
     Layout(
-        modifier = Modifier.shadow(10.dp, shape, clip = false)
+        modifier = Modifier.shadow(6.dp, shape, clip = false)
             .graphicsLayer {
                 this.shape = shape
                 clip = true
                 transformOrigin = TransformOrigin(1f, 1f)
                 rotationZ = ripple * 0.65f
                 scaleY = 1f + (raw - p) * 0.12f
-            }.background(color.copy(alpha = 0.94f)).liquidSheen(),
+            }.background(surface.copy(alpha = 0.98f)).liquidSheen()
+            .border(0.75.dp, Brush.verticalGradient(listOf(edge, edge.copy(alpha = 0.025f))), shape),
         content = {
             Box(Modifier.pointerInput(expanded) {
                 if (!expanded) awaitPointerEventScope {

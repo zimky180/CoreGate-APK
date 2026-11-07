@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
                 java.time.Duration.between(it, java.time.Instant.now()).toMillis()
             } ?: 680L
             val remaining = if (scale == 0f || savedInstanceState != null) 0L
-                else (680L * scale - elapsed).toLong().coerceIn(0L, 1200L)
+                else ((splash.iconAnimationDuration?.toMillis() ?: 680L) * scale - elapsed).toLong().coerceIn(0L, 1200L)
             splash.postDelayed({
                 if (icon != null && icon.width > 0 && icon.height > 0) {
                     val location = IntArray(2)
@@ -147,11 +147,10 @@ class MainActivity : ComponentActivity() {
                 val finish = object : Runnable {
                     override fun run() {
                         if (introIconDrawn || android.os.SystemClock.uptimeMillis() >= deadline) {
-                            splash.animate().alpha(0f).setDuration(if (scale == 0f) 0L else 80L)
-                                .withEndAction {
-                                    splash.remove()
-                                    introOverlayRemoved = true
-                                }.start()
+                            // The matching Compose frame is already drawn. Swap on this
+                            // vsync rather than holding the chip for an extra fade-out.
+                            introOverlayRemoved = true
+                            splash.remove()
                         } else splash.postOnAnimation(this)
                     }
                 }
@@ -161,6 +160,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var introVisible by rememberSaveable { mutableStateOf(savedInstanceState == null) }
+            var introMotionComplete by remember { mutableStateOf(savedInstanceState != null) }
             var appearance by remember { mutableStateOf(AppSettings.load(this@MainActivity)) }
             val themeLayer = androidx.compose.ui.graphics.rememberGraphicsLayer()
             var oldThemeLayer by remember { mutableStateOf<androidx.compose.ui.graphics.layer.GraphicsLayer?>(null) }
@@ -198,7 +198,7 @@ class MainActivity : ComponentActivity() {
             MiuixKernelSUTheme(appSettings = appearance, startupActive = introVisible) {
                 // 开屏 root 门槛：拿不到 root 就根本进不来（拦截式，不是提醒式）。
                 // 放在主题内部，保证检测页与主界面共用同一套配色，不会闪一次白屏。
-                RootGate { AppRoot() }
+                if (introMotionComplete || !introVisible) RootGate { AppRoot() }
             }
             }
             }
@@ -213,6 +213,7 @@ class MainActivity : ComponentActivity() {
                     startBounds = introStartBounds,
                     onIconBounds = { introIconBounds = it },
                     onIconDrawn = { introIconDrawn = true },
+                    onMotionFinished = { introMotionComplete = true },
                     onFinished = { introVisible = false }
                 )
             }

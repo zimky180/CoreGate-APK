@@ -112,6 +112,7 @@ fun StartupIntro(
     startBounds: androidx.compose.ui.geometry.Rect? = null,
     onIconBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     onIconDrawn: () -> Unit = {},
+    onMotionFinished: () -> Unit = {},
     onFinished: () -> Unit
 ) {
     val clock = remember { Animatable(0f) }
@@ -120,6 +121,7 @@ fun StartupIntro(
     val owner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val currentFinished by rememberUpdatedState(onFinished)
+    val currentMotionFinished by rememberUpdatedState(onMotionFinished)
     val artwork = remember { IntroArtwork() }
     val duration = remember(context) {
         val scale = runCatching {
@@ -131,8 +133,9 @@ fun StartupIntro(
     LaunchedEffect(owner, duration, started, moving) {
         if (!started || !moving) return@LaunchedEffect
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            handoff.animateTo(1f, tween(if (duration == 0) 0 else 340,
+            handoff.animateTo(1f, tween(if (duration == 0) 0 else 480,
                 easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            currentMotionFinished()
             val remaining = ((1f - clock.value) * duration).toInt().coerceAtLeast(0)
             clock.animateTo(1f, tween(remaining, easing = LinearEasing))
             currentFinished()
@@ -140,12 +143,9 @@ fun StartupIntro(
         }
     }
     BackHandler { currentFinished() }
-    val t = clock.value
-    val reveal = phase(t, 0.84f, 1f)
-    val light = 1f - phase(t, 0.68f, 0.80f)
     val iconIn = if (started) 1f else 0f
     Box(
-        Modifier.fillMaxSize().graphicsLayer { alpha = 1f - reveal }
+        Modifier.fillMaxSize().graphicsLayer { alpha = 1f - phase(clock.value, 0.84f, 1f) }
             .background(Color.Black)
             .semantics { contentDescription = "CoreGate 启动动画" }
             .pointerInput(Unit) {
@@ -158,7 +158,8 @@ fun StartupIntro(
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = light }) {
+        Canvas(Modifier.fillMaxSize().graphicsLayer { alpha = 1f - phase(clock.value, 0.68f, 0.80f) }) {
+            val t = clock.value
             val center = Offset(size.width / 2f, size.height / 2f - 50.dp.toPx())
             val breath = phase(t, 0.02f, 0.36f)
             drawRect(Brush.radialGradient(
@@ -176,7 +177,7 @@ fun StartupIntro(
         }
         Column(
             Modifier.fillMaxWidth().graphicsLayer {
-                alpha = light
+                alpha = 1f - phase(clock.value, 0.68f, 0.80f)
                 // Geometry matches the system icon at the handoff frame.
             },
             horizontalAlignment = Alignment.CenterHorizontally
@@ -209,6 +210,7 @@ fun StartupIntro(
                         })
                 }
                 Canvas(Modifier.fillMaxSize()) {
+                    val t = clock.value
                     val sweep = phase(t, 0f, 0.29f)
                     val fade = phase(t, 0f, 0.035f) * (1f - phase(t, 0.27f, 0.40f))
                     artwork.segment.reset()
@@ -234,6 +236,7 @@ fun StartupIntro(
             }
             Spacer(Modifier.height(12.dp))
             Canvas(Modifier.widthIn(max = 360.dp).fillMaxWidth(0.88f).height(76.dp)) {
+                val t = clock.value
                 val scale = size.width / 680f
                 val top = (size.height - 120f * scale) / 2f
                 val assembly = phase(t, 0.12f, 0.49f)
@@ -272,7 +275,7 @@ fun StartupIntro(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .graphicsLayer {
-                        alpha = phase(t, 0.44f, 0.58f)
+                        alpha = phase(clock.value, 0.44f, 0.58f)
                     },
                 color = Color(0xFFECFFF6).copy(alpha = 0.65f),
                 fontSize = 13.sp,
